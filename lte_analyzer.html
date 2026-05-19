@@ -2718,9 +2718,48 @@ function gsiSignOut() {
 }
 
 function gsiFallbackSignIn() {
+  // Try GIS One Tap first; if it reports not displayed, fall back to redirect flow.
   if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-    google.accounts.id.prompt();
+    google.accounts.id.prompt(n => {
+      if (n.isNotDisplayed() || n.isDismissedMoment()) gsiOAuthRedirect();
+    });
+  } else {
+    gsiOAuthRedirect();
   }
+}
+
+function gsiOAuthRedirect() {
+  const redirectUri = location.origin + location.pathname;
+  const p = new URLSearchParams({
+    client_id: '748827956501-5ei8806ga8j0aj4ie7tmd3l7d27sjt8o.apps.googleusercontent.com',
+    redirect_uri: redirectUri,
+    response_type: 'token',
+    scope: 'email profile',
+    prompt: 'select_account',
+  });
+  location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + p;
+}
+
+async function gsiHandleOAuthCallback() {
+  if (!location.hash.includes('access_token')) return false;
+  const p = new URLSearchParams(location.hash.slice(1));
+  const token = p.get('access_token');
+  if (!token) return false;
+  history.replaceState(null, '', location.pathname);   // clean hash from URL
+  try {
+    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
+                          { headers: { Authorization: 'Bearer ' + token } });
+    const u = await r.json();
+    if (!GSI_ALLOWED.includes((u.email || '').toLowerCase())) {
+      const err = document.getElementById('login-err');
+      err.textContent = 'Access denied: ' + u.email;
+      err.style.display = '';
+      return false;
+    }
+    sessionStorage.setItem(GSI_KEY, JSON.stringify({ name: u.name, email: u.email, picture: u.picture }));
+    gsiShowUser({ name: u.name, email: u.email, picture: u.picture });
+    return true;
+  } catch (_) { return false; }
 }
 
 // Restore session on page load — show app immediately if already authenticated
@@ -2729,14 +2768,18 @@ function gsiFallbackSignIn() {
     const saved = sessionStorage.getItem(GSI_KEY);
     if (saved) { gsiShowUser(JSON.parse(saved)); return; }
   } catch (_) {}
-  // After 2 s check if GIS rendered the iframe button — if not, show fallback
-  setTimeout(() => {
-    const signin = document.querySelector('.g_id_signin');
-    const hasBtn = signin && signin.querySelector('iframe');
-    if (!hasBtn) {
-      document.getElementById('gsi-fallback-btn').style.display = 'flex';
-    }
-  }, 2000);
+
+  // Handle OAuth redirect callback (token in URL hash after Google redirect)
+  gsiHandleOAuthCallback().then(ok => {
+    if (ok) return;
+    // After 2 s check if GIS rendered the iframe button — if not, show fallback
+    setTimeout(() => {
+      const signin = document.querySelector('.g_id_signin');
+      if (!signin || !signin.querySelector('iframe')) {
+        document.getElementById('gsi-fallback-btn').style.display = 'flex';
+      }
+    }, 2000);
+  });
 })();
 </script>
 </body>
