@@ -6,6 +6,7 @@
 <title>LTE Analyzer · Particle B-SoM / B404X / B524</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.4.0/dist/tabler-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root {
     --bg:        #0d0d0d;
@@ -153,6 +154,11 @@
   .yellow { color:var(--yellow); }
   .red    { color:var(--red); }
   .blue   { color:var(--blue); }
+
+  /* ── Google Sign-In ── */
+  #gsi-user { display:none; align-items:center; gap:8px; }
+  #gsi-avatar { width:26px; height:26px; border-radius:50%; border:1px solid var(--border2); flex-shrink:0; }
+  #gsi-name { font-size:11px; color:var(--text2); max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -177,6 +183,27 @@
       <option value="m524">M524 (EG91-EX) · EMEAA LTE Cat 1</option>
     </optgroup>
   </select>
+  <!-- Google Sign-In -->
+  <div id="gsi-wrap">
+    <div id="g_id_onload"
+         data-client_id="748827956501-5ei8806ga8j0aj4ie7tmd3l7d27sjt8o.apps.googleusercontent.com"
+         data-callback="handleGoogleCredential"
+         data-auto_prompt="false">
+    </div>
+    <div class="g_id_signin"
+         data-type="standard"
+         data-size="medium"
+         data-theme="filled_black"
+         data-text="signin_with"
+         data-shape="rectangular"
+         data-logo_alignment="left">
+    </div>
+  </div>
+  <div id="gsi-user">
+    <img id="gsi-avatar" src="" alt="">
+    <span id="gsi-name"></span>
+    <button onclick="gsiSignOut()" title="Sign out"><i class="ti ti-logout"></i></button>
+  </div>
   <div id="sdot" class="dot"></div>
   <span id="stxt">Disconnected</span>
   <select id="baud"><option>115200</option><option>9600</option><option>57600</option></select>
@@ -2622,6 +2649,52 @@ function show(id, visible) {
 // Run once on load to apply initial state
 onDevChange();
 setTimeout(initCharts, 80);
+
+// ── Google Identity Services ──────────────────────────────────────────────────
+const GSI_KEY = 'lte_analyzer_gsi';
+const GSI_ALLOWED = [
+  'mlower@apisinnovation.com',
+  'gchrin@apisinnovation.com',
+  'nnichols@apisinnovation.com',
+  'bcosgriff@apisinnovation.com',
+];
+
+function handleGoogleCredential(response) {
+  try {
+    const payload = JSON.parse(atob(response.credential.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    if (!GSI_ALLOWED.includes(payload.email.toLowerCase())) {
+      if (typeof google !== 'undefined') google.accounts.id.disableAutoSelect();
+      alert('Access denied: ' + payload.email + '\nContact your administrator.');
+      return;
+    }
+    sessionStorage.setItem(GSI_KEY, JSON.stringify({ name: payload.name, email: payload.email, picture: payload.picture }));
+    gsiShowUser({ name: payload.name, email: payload.email, picture: payload.picture });
+  } catch (_) {}
+}
+
+function gsiShowUser(u) {
+  document.getElementById('gsi-wrap').style.display = 'none';
+  const el = document.getElementById('gsi-user');
+  el.style.display = 'flex';
+  document.getElementById('gsi-avatar').src = u.picture || '';
+  document.getElementById('gsi-name').textContent = u.name || u.email || '';
+  document.getElementById('gsi-name').title = u.email || '';
+}
+
+function gsiSignOut() {
+  sessionStorage.removeItem(GSI_KEY);
+  if (typeof google !== 'undefined') google.accounts.id.disableAutoSelect();
+  document.getElementById('gsi-user').style.display = 'none';
+  document.getElementById('gsi-wrap').style.display = '';
+}
+
+// Restore session on page load
+(function() {
+  try {
+    const saved = sessionStorage.getItem(GSI_KEY);
+    if (saved) gsiShowUser(JSON.parse(saved));
+  } catch (_) {}
+})();
 </script>
 </body>
 </html>
