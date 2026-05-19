@@ -1,0 +1,2627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LTE Analyzer · Particle B-SoM / B404X / B524</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.4.0/dist/tabler-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:        #0d0d0d;
+    --bg2:       #161616;
+    --bg3:       #1e1e1e;
+    --border:    rgba(255,255,255,0.08);
+    --border2:   rgba(255,255,255,0.14);
+    --text:      #e8e8e8;
+    --text2:     #888;
+    --text3:     #555;
+    --green:     #22c55e;
+    --yellow:    #f59e0b;
+    --red:       #ef4444;
+    --blue:      #3b82f6;
+    --purple:    #a855f7;
+    --radius:    8px;
+    --radius2:   12px;
+    --font-mono: 'Fira Code','Cascadia Code','Consolas',monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size: 13px; min-height: 100vh; }
+  #app { max-width: 1100px; margin: 0 auto; padding: 16px; }
+
+  /* ── Header ── */
+  .hdr { display:flex; align-items:center; gap:12px; padding-bottom:14px; border-bottom:1px solid var(--border); margin-bottom:14px; flex-wrap:wrap; }
+  .hdr-title h1 { font-size:15px; font-weight:600; }
+  .hdr-title p  { font-size:11px; color:var(--text2); margin-top:1px; }
+  .hdr-spacer   { flex:1; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--text3); flex-shrink:0; transition:background .3s; }
+  .dot.ok   { background:var(--green); box-shadow:0 0 6px var(--green); }
+  .dot.warn { background:var(--yellow); }
+  .dot.err  { background:var(--red); }
+  #stxt { font-size:12px; color:var(--text2); }
+
+  /* ── Buttons & inputs ── */
+  button { background:var(--bg3); border:1px solid var(--border2); color:var(--text); padding:6px 13px; border-radius:var(--radius); cursor:pointer; font-size:12px; font-family:inherit; display:inline-flex; align-items:center; gap:5px; transition:background .15s,border-color .15s; white-space:nowrap; }
+  button:hover { background:var(--bg2); border-color:rgba(255,255,255,0.22); }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  button.primary { background:#1d4ed8; border-color:#2563eb; color:#fff; }
+  button.primary:hover { background:#1e40af; }
+  button.danger  { background:#7f1d1d; border-color:#991b1b; color:#fca5a5; }
+  button.danger:hover { background:#991b1b; }
+  button.success { background:#14532d; border-color:#166534; color:#86efac; }
+  select,input[type=text],input[type=number] { background:var(--bg3); border:1px solid var(--border2); color:var(--text); padding:6px 10px; border-radius:var(--radius); font-size:12px; font-family:inherit; outline:none; }
+  select:focus,input:focus { border-color:var(--blue); }
+  input[type=range] { accent-color:var(--blue); width:100%; cursor:pointer; }
+
+  /* ── Tabs ── */
+  .tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:16px; overflow-x:auto; }
+  .tab  { background:transparent; border:none; border-bottom:2px solid transparent; color:var(--text2); padding:8px 14px; border-radius:0; gap:6px; font-size:12.5px; }
+  .tab.on  { color:var(--text); border-bottom-color:var(--blue); font-weight:500; }
+  .tab:hover:not(.on) { color:var(--text); }
+  .tp { display:none; }
+  .tp.on { display:block; }
+
+  /* ── Cards & metrics ── */
+  .card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius2); padding:14px 16px; }
+  .card-title { font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--text2); margin-bottom:10px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+  .grid4 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:8px; }
+  .metric { background:var(--bg3); border-radius:var(--radius); padding:11px 13px; }
+  .metric .mlabel { font-size:10px; color:var(--text2); text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px; }
+  .metric .mval   { font-family:var(--font-mono); font-size:22px; font-weight:500; line-height:1.1; }
+  .metric .msub   { font-size:10.5px; color:var(--text2); margin-top:4px; }
+  .bar { height:4px; background:var(--bg); border-radius:2px; margin-top:6px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:2px; width:0; transition:width .5s,background .5s; }
+
+  /* ── KV table ── */
+  .kvt { width:100%; border-collapse:collapse; }
+  .kvt td { padding:3px 0; }
+  .kvt td:first-child { color:var(--text2); }
+  .kvt td:last-child  { text-align:right; font-family:var(--font-mono); font-size:12px; }
+
+  /* ── Status badge ── */
+  .badge { display:inline-block; font-size:10px; padding:2px 7px; border-radius:4px; font-weight:500; }
+  .badge-green  { background:rgba(34,197,94,.15);  color:var(--green); }
+  .badge-yellow { background:rgba(245,158,11,.15); color:var(--yellow); }
+  .badge-red    { background:rgba(239,68,68,.15);  color:var(--red); }
+  .badge-blue   { background:rgba(59,130,246,.15); color:var(--blue); }
+  .badge-gray   { background:var(--bg3);           color:var(--text2); }
+
+  /* ── Operator row ── */
+  .op-row { display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius); margin-bottom:6px; cursor:pointer; transition:background .15s,border-color .15s; }
+  .op-row:hover { background:var(--bg3); }
+  .op-row.on    { border-color:var(--blue); background:rgba(59,130,246,.06); }
+  .op-icon { width:36px; height:36px; border-radius:var(--radius); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; flex-shrink:0; }
+
+  /* ── Cell rows ── */
+  .cell-hdr,.cell-row { display:grid; grid-template-columns:90px 80px 60px 90px 90px 80px 1fr; gap:6px; padding:4px 0; border-bottom:1px solid var(--border); font-size:11.5px; font-family:var(--font-mono); align-items:center; }
+  .cell-hdr { color:var(--text2); font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--border2); padding-bottom:6px; margin-bottom:2px; font-family:inherit; }
+  .cell-row:last-child { border-bottom:none; }
+
+  /* ── Score bar ── */
+  .score-bar { height:20px; border-radius:4px; background:linear-gradient(90deg,var(--red),var(--yellow),var(--green)); position:relative; overflow:hidden; margin:4px 0; }
+  .score-marker { position:absolute; top:0; height:100%; width:2px; background:#fff; box-shadow:0 0 4px rgba(0,0,0,.6); transition:left .4s; }
+
+  /* ── Console ── */
+  .console { font-family:var(--font-mono); font-size:12px; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; height:260px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; line-height:1.55; }
+  .console .tx { color:#60a5fa; }
+  .console .rx { color:#e8e8e8; }
+  .console .sys{ color:#6b7280; font-style:italic; }
+  .console .err{ color:var(--red); }
+  .console .ok { color:var(--green); }
+
+  /* ── Antenna polar ── */
+  #polar-wrap { position:relative; height:220px; }
+  .az-compass { display:flex; justify-content:space-between; font-size:10px; color:var(--text2); margin-top:3px; }
+
+  /* ── Test wizard ── */
+  .step { display:flex; gap:12px; align-items:flex-start; padding:10px 0; border-bottom:1px solid var(--border); }
+  .step:last-child { border-bottom:none; }
+  .step-num { width:24px; height:24px; border-radius:50%; background:var(--bg3); border:1px solid var(--border2); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0; color:var(--text2); }
+  .step-num.done { background:rgba(34,197,94,.15); border-color:var(--green); color:var(--green); }
+  .step-num.active { background:rgba(59,130,246,.15); border-color:var(--blue); color:var(--blue); }
+
+  /* ── Band grid ── */
+  .band-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:7px; }
+  .band-card { border:1px solid var(--border); border-radius:var(--radius); padding:9px 11px; cursor:pointer; }
+  .band-card:hover { background:var(--bg3); }
+  .band-card input { margin-right:7px; accent-color:var(--blue); }
+
+  /* ── Log table ── */
+  .log-hdr,.log-row { display:grid; grid-template-columns:60px 60px 80px 75px 75px 60px 60px 1fr; gap:6px; padding:4px 2px; border-bottom:1px solid var(--border); font-size:11.5px; font-family:var(--font-mono); align-items:center; }
+  .log-hdr { color:var(--text2); font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; font-family:inherit; border-bottom:1px solid var(--border2); }
+  .hide-sinr .log-hdr,.hide-sinr .log-row { grid-template-columns:60px 60px 80px 75px 75px 60px 1fr; }
+  .hide-sinr .log-hdr span:nth-child(6),.hide-sinr .log-row span:nth-child(6) { display:none; }
+
+  .gap8  { gap:8px; }
+  .mb8   { margin-bottom:8px; }
+  .mb12  { margin-bottom:12px; }
+  .mb16  { margin-bottom:16px; }
+  .mt8   { margin-top:8px; }
+  .mt12  { margin-top:12px; }
+  .flex  { display:flex; }
+  .flex-wrap { flex-wrap:wrap; }
+  .items-center { align-items:center; }
+  .justify-between { justify-content:space-between; }
+  .f1 { flex:1; }
+  .mono { font-family:var(--font-mono); }
+  .text2 { color:var(--text2); }
+  .bold { font-weight:600; }
+  .small { font-size:11px; }
+  .green { color:var(--green); }
+  .yellow { color:var(--yellow); }
+  .red    { color:var(--red); }
+  .blue   { color:var(--blue); }
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ══ HEADER ══════════════════════════════════════════════════════════════ -->
+<div class="hdr">
+  <i class="ti ti-antenna-bars-5" style="font-size:22px;color:var(--text2)"></i>
+  <div class="hdr-title">
+    <h1>LTE Analyzer &middot; <span id="hdr-dev">Particle B-SoM</span></h1>
+    <p id="hdr-sub">u-blox SARA-R510S &middot; Web Serial / BLE &middot; Chrome/Edge &amp; Bluefy</p>
+  </div>
+  <div class="hdr-spacer"></div>
+  <select id="dev-sel" onchange="onDevChange()" title="Device / Region" style="min-width:240px">
+    <optgroup label="B-SoM">
+      <option value="r510s-us">B404X (SARA-R510S) · US</option>
+      <option value="r510s-eu">B404X (SARA-R510S) · EU/PL</option>
+      <option value="eq91-eu" >B524 (EG91-E) · Europe / PL</option>
+    </optgroup>
+    <optgroup label="M-SoM">
+      <option value="m404">M404 (BG95-M5) · Global LTE-M/2G</option>
+      <option value="m524">M524 (EG91-EX) · EMEAA LTE Cat 1</option>
+    </optgroup>
+  </select>
+  <div id="sdot" class="dot"></div>
+  <span id="stxt">Disconnected</span>
+  <select id="baud"><option>115200</option><option>9600</option><option>57600</option></select>
+  <button id="btn-conn" onclick="doConn()"><i class="ti ti-plug"></i> Connect USB</button>
+  <button id="btn-ble"  onclick="connectBle()"><i class="ti ti-bluetooth"></i> Connect BLE</button>
+  <button id="btn-poll" onclick="togglePoll()" style="display:none"><i class="ti ti-player-play"></i> Poll</button>
+  <button id="btn-disc" onclick="doDisc()" style="display:none" class="danger"><i class="ti ti-plug-x"></i> Disc.</button>
+</div>
+
+<!-- ══ TABS ════════════════════════════════════════════════════════════════ -->
+<div class="tabs">
+  <button class="tab on" onclick="openTab('db')"><i class="ti ti-dashboard"></i> Dashboard</button>
+  <button class="tab"    onclick="openTab('cl')"><i class="ti ti-tower-broadcast"></i> Cells</button>
+  <button class="tab"    onclick="openTab('op')"><i class="ti ti-building-broadcast-tower"></i> Operators</button>
+  <button class="tab"    onclick="openTab('rb')"><i class="ti ti-wave-square"></i> RAT &amp; Bands</button>
+  <button class="tab"    onclick="openTab('an')"><i class="ti ti-compass"></i> Antenna</button>
+  <button class="tab"    onclick="openTab('wz')"><i class="ti ti-clipboard-check"></i> Best-Provider Test</button>
+  <button class="tab"    onclick="openTab('lg')"><i class="ti ti-table"></i> Log</button>
+  <button class="tab"    onclick="openTab('mp')"><i class="ti ti-map-2"></i> Map</button>
+  <button class="tab"    onclick="openTab('co')"><i class="ti ti-terminal-2"></i> Console</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TAB: DASHBOARD
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="tp-db" class="tp on">
+  <div class="grid3 mb12">
+    <div class="metric">
+      <div class="mlabel">RSRP</div>
+      <div class="mval" id="v-rsrp">—</div>
+      <div class="bar"><div class="bar-fill" id="b-rsrp"></div></div>
+      <div class="msub" id="q-rsrp">dBm · Reference Signal Received Power</div>
+    </div>
+    <div class="metric">
+      <div class="mlabel">RSRQ</div>
+      <div class="mval" id="v-rsrq">—</div>
+      <div class="bar"><div class="bar-fill" id="b-rsrq"></div></div>
+      <div class="msub" id="q-rsrq">dB · Reference Signal Received Quality</div>
+    </div>
+    <div class="metric" id="metric-snr">
+      <div class="mlabel">SINR / SNR</div>
+      <div class="mval" id="v-snr">—</div>
+      <div class="bar"><div class="bar-fill" id="b-snr"></div></div>
+      <div class="msub" id="q-snr">dB · Signal to Interference+Noise Ratio</div>
+    </div>
+  </div>
+  <div class="grid2 mb12">
+    <div class="card">
+      <div class="card-title">Serving Cell</div>
+      <table class="kvt">
+        <tr><td>Operator</td><td id="ci-op">—</td></tr>
+        <tr><td>MCC/MNC</td><td id="ci-mn">—</td></tr>
+        <tr><td>Cell ID</td><td id="ci-id">—</td></tr>
+        <tr><td>eNB ID / Sector</td><td id="ci-en">—</td></tr>
+        <tr><td>TAC</td><td id="ci-ta">—</td></tr>
+        <tr><td>Status</td><td id="ci-st">—</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">Radio</div>
+      <table class="kvt">
+        <tr><td>Technology</td><td id="r-rat">—</td></tr>
+        <tr><td>EARFCN</td><td id="r-ear">—</td></tr>
+        <tr><td>Band</td><td id="r-bnd">—</td></tr>
+        <tr><td>DL Freq</td><td id="r-frq">—</td></tr>
+        <tr><td>PCI</td><td id="r-pci">—</td></tr>
+        <tr><td>Bandwidth</td><td id="r-bw">—</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="card mb12">
+    <div class="flex items-center justify-between mb8">
+      <span class="card-title" style="margin:0">Signal History <span id="hpts" class="text2 small" style="font-weight:400"></span></span>
+      <div class="flex gap8">
+        <span class="small text2"><span style="display:inline-block;width:10px;height:2px;background:#3b82f6;vertical-align:middle;margin-right:3px;border-radius:2px"></span>RSRP</span>
+        <span class="small text2"><span style="display:inline-block;width:10px;height:2px;background:#22c55e;vertical-align:middle;margin-right:3px;border-radius:2px;border-top:1px dashed #22c55e"></span>RSRQ×5</span>
+        <span class="small text2" id="legend-sinr"><span style="display:inline-block;width:10px;height:2px;background:#f97316;vertical-align:middle;margin-right:3px;border-radius:2px;border-top:1px dotted #f97316"></span>SINR×3</span>
+      </div>
+    </div>
+    <div style="position:relative;height:130px"><canvas id="hc" aria-label="Signal history chart"></canvas></div>
+  </div>
+  <div class="flex gap8 flex-wrap">
+    <button onclick="doRefresh()"><i class="ti ti-refresh"></i> Refresh All</button>
+    <button onclick="qr('AT+CESQ')">CESQ</button>
+    <button onclick="qr('AT+CEREG?')">CEREG?</button>
+    <button id="btn-ucged-dash" onclick="qrUcged()">UCGED=5</button>
+    <button onclick="qr('AT+COPS?')">COPS?</button>
+    <button onclick="qr('AT+CSQ')">CSQ</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TAB: CELLS
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="tp-cl" class="tp">
+  <div class="flex items-center justify-between mb12">
+    <span id="ucged-tab-label" style="font-size:14px;font-weight:500">Cell Environment (AT+UCGED=5)</span>
+    <button onclick="scanCells()"><i class="ti ti-refresh"></i> Scan Cells</button>
+  </div>
+  <div class="card mb10">
+    <div class="card-title">Serving Cell</div>
+    <div class="cell-hdr"><span>CELL ID</span><span>EARFCN</span><span>PCI</span><span>RSRP</span><span>RSRQ</span><span>BAND</span><span></span></div>
+    <div id="srv-row" class="cell-row">
+      <span class="text2">—</span><span class="text2">—</span><span class="text2">—</span><span class="text2">—</span><span class="text2">—</span><span class="text2">—</span><span></span>
+    </div>
+  </div>
+  <div class="card mb10">
+    <div class="card-title">Neighbor Cells</div>
+    <div class="cell-hdr"><span>EARFCN</span><span>PCI</span><span>RSRP</span><span>RSRQ</span><span>BAND</span><span>LOCK</span><span></span></div>
+    <div id="nbr-rows"><p class="text2 small" style="padding:16px 0;text-align:center">Run scan to see neighbor cells</p></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Cell Lock (AT+ULOCKCREG)</div>
+    <p class="text2 small mb8">Lock to a specific cell for stable directional antenna measurements</p>
+    <div class="flex gap8 flex-wrap">
+      <input type="text" id="lk-ear" placeholder="EARFCN" style="width:90px">
+      <input type="text" id="lk-pci" placeholder="PCI" style="width:70px">
+      <button onclick="doLock()" class="success"><i class="ti ti-lock"></i> Lock</button>
+      <button onclick="doUnlock()"><i class="ti ti-lock-open"></i> Unlock</button>
+      <span id="lock-status" class="small text2" style="align-self:center"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TAB: OPERATORS
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="tp-op" class="tp">
+  <div class="flex items-center justify-between mb12" style="flex-wrap:wrap;gap:8px">
+    <div>
+      <p style="font-size:14px;font-weight:500;margin-bottom:2px">Network Selection</p>
+      <p class="text2 small">Current: <span id="op-cur" class="mono">—</span></p>
+    </div>
+    <div class="flex gap8">
+      <button onclick="getCops()"><i class="ti ti-refresh"></i> Get</button>
+      <button onclick="scanOps()"><i class="ti ti-search"></i> Scan (~2 min)</button>
+      <button onclick="atCmd('AT+COPS=0').then(getCops)"><i class="ti ti-automatic-gearbox"></i> Auto</button>
+      <button onclick="atCmd('AT+COPS=2')" class="danger"><i class="ti ti-player-stop"></i> Deregister</button>
+    </div>
+  </div>
+  <!-- US carriers -->
+  <div id="op-us">
+    <p class="small text2 bold mb8" style="text-transform:uppercase;letter-spacing:.05em">US LTE-M Carriers</p>
+    <div class="op-row" id="o310410" onclick="selOp('310410')">
+      <div class="op-icon" style="background:rgba(59,130,246,.12);color:#3b82f6">ATT</div>
+      <div class="f1"><p style="font-weight:500;margin-bottom:2px">AT&amp;T Mobility</p><p class="mono small text2">310-410 · B2, B4, B12, B14, B17</p></div>
+      <button onclick="event.stopPropagation();connOp('310410','AT&T')" class="small">Connect</button>
+    </div>
+    <div class="op-row" id="o311480" onclick="selOp('311480')">
+      <div class="op-icon" style="background:rgba(239,68,68,.12);color:#ef4444">VZW</div>
+      <div class="f1"><p style="font-weight:500;margin-bottom:2px">Verizon</p><p class="mono small text2">311-480 · B2, B4, B5, B13</p></div>
+      <button onclick="event.stopPropagation();connOp('311480','Verizon')" class="small">Connect</button>
+    </div>
+    <div class="op-row" id="o310260" onclick="selOp('310260')">
+      <div class="op-icon" style="background:rgba(34,197,94,.12);color:#22c55e">TMO</div>
+      <div class="f1"><p style="font-weight:500;margin-bottom:2px">T-Mobile</p><p class="mono small text2">310-260 · B2, B4, B12, B71</p></div>
+      <button onclick="event.stopPropagation();connOp('310260','T-Mobile')" class="small">Connect</button>
+    </div>
+  </div>
+
+  <!-- EU / Poland carriers — B524 + M524 -->
+  <div id="op-eu" style="display:none">
+    <p class="small text2 bold mb8" style="text-transform:uppercase;letter-spacing:.05em">Polska / Poland — Cat 1 (B524 · M524)</p>
+    <div class="op-row" id="o26003" onclick="selOp('26003')">
+      <div class="op-icon" style="background:rgba(249,115,22,.12);color:#f97316">ORG</div>
+      <div class="f1">
+        <p style="font-weight:500;margin-bottom:2px">Orange Polska</p>
+        <p class="mono small text2">260-03 · B3 (1800) · B8 (900) · B20 (800)</p>
+      </div>
+      <button onclick="event.stopPropagation();connOp('26003','Orange PL')" class="small">Connect</button>
+    </div>
+    <div class="op-row" id="o26002" onclick="selOp('26002')">
+      <div class="op-icon" style="background:rgba(236,72,153,.12);color:#ec4899">TMO</div>
+      <div class="f1">
+        <p style="font-weight:500;margin-bottom:2px">T-Mobile Polska</p>
+        <p class="mono small text2">260-02 · B3 (1800) · B8 (900) · B20 (800)</p>
+      </div>
+      <button onclick="event.stopPropagation();connOp('26002','T-Mobile PL')" class="small">Connect</button>
+    </div>
+    <div class="op-row" id="o26001" onclick="selOp('26001')">
+      <div class="op-icon" style="background:rgba(34,197,94,.12);color:#22c55e">PLU</div>
+      <div class="f1">
+        <p style="font-weight:500;margin-bottom:2px">Plus (Polkomtel)</p>
+        <p class="mono small text2">260-01 · B3 (1800) · B8 (900) · B20 (800)</p>
+      </div>
+      <button onclick="event.stopPropagation();connOp('26001','Plus PL')" class="small">Connect</button>
+    </div>
+    <div class="op-row" id="o26006" onclick="selOp('26006')">
+      <div class="op-icon" style="background:rgba(168,85,247,.12);color:#a855f7">PLY</div>
+      <div class="f1">
+        <p style="font-weight:500;margin-bottom:2px">Play (P4)</p>
+        <p class="mono small text2">260-06 · B3 (1800) · B8 (900) · B20 (800)</p>
+      </div>
+      <button onclick="event.stopPropagation();connOp('26006','Play PL')" class="small">Connect</button>
+    </div>
+    <div class="op-row" id="o26034" onclick="selOp('26034')" style="opacity:.75">
+      <div class="op-icon" style="background:rgba(99,102,241,.12);color:#6366f1">VIR</div>
+      <div class="f1">
+        <p style="font-weight:500;margin-bottom:2px">Virgin Mobile PL <span class="badge badge-gray">MVNO/Play</span></p>
+        <p class="mono small text2">260-34 · roaming B3 · B8 · B20</p>
+      </div>
+      <button onclick="event.stopPropagation();connOp('26034','Virgin PL')" class="small">Connect</button>
+    </div>
+  </div>
+
+  <!-- Global LTE-M/2G — M404 (BG95-M5) -->
+  <div id="op-global" style="display:none">
+    <p class="small text2 bold mb8" style="text-transform:uppercase;letter-spacing:.05em">Global LTE-M / 2G — M404 (BG95-M5)</p>
+    <p class="small text2 mb12">BG95-M5 supports LTE Cat-M1, NB-IoT and 2G/GPRS fallback. Select your operator below.</p>
+    <div class="op-row" id="og310410" onclick="selOp('310410')">
+      <div class="op-icon" style="background:rgba(0,168,224,.12);color:#00A8E0">ATT</div>
+      <div class="f1"><p style="font-weight:500;margin-bottom:2px">AT&amp;T</p><p class="mono small text2">310-410 · B2, B4, B12, B17 · LTE-M / NB-IoT</p></div>
+      <button onclick="event.stopPropagation();connOp('310410','AT&T')" class="small">Connect</button>
+    </div>
+    <div class="op-row" id="og311480" onclick="selOp('311480')">
+      <div class="op-icon" style="background:rgba(205,4,11,.12);color:#CD040B">VZW</div>
+      <div class="f1"><p style="font-weight:500;margin-bottom:2px">Verizon</p><p class="mono small text2">311-480 · B4, B13 · LTE-M / NB-IoT</p></div>
+      <button onclick="event.stopPropagation();connOp('311480','Verizon')" class="small">Connect</button>
+    </div>
+    <div class="op-row" id="og310260" onclick="selOp('310260')">
+      <div class="op-icon" style="background:rgba(226,0,116,.12);color:#E20074">TMO</div>
+      <div class="f1"><p style="font-weight:500;margin-bottom:2px">T-Mobile US</p><p class="mono small text2">310-260 · B2, B4, B12, B71 · LTE-M / NB-IoT</p></div>
+      <button onclick="event.stopPropagation();connOp('310260','T-Mobile')" class="small">Connect</button>
+    </div>
+    <div class="op-row" id="og26003" onclick="selOp('26003')">
+      <div class="op-icon" style="background:rgba(249,115,22,.12);color:#f97316">ORG</div>
+      <div class="f1"><p style="font-weight:500;margin-bottom:2px">Orange Polska</p><p class="mono small text2">260-03 · B3, B8, B20 · LTE-M</p></div>
+      <button onclick="event.stopPropagation();connOp('26003','Orange PL')" class="small">Connect</button>
+    </div>
+  </div>
+
+  <!-- Poland LTE-M — Orange only (B404X / SARA-R510S) -->
+  <div id="op-eu-ltem" style="display:none">
+    <p class="small text2 bold mb8" style="text-transform:uppercase;letter-spacing:.05em">Poland LTE-M · Orange only</p>
+    <p class="small text2 mb12" style="color:var(--text2)">Only Orange Polska offers LTE-M (Cat-M1) in Poland for external SIMs.</p>
+    <div class="op-row" onclick="selOp('26003')">
+      <div class="op-icon" style="background:rgba(249,115,22,.12);color:#f97316">ORG</div>
+      <div class="f1">
+        <p style="font-weight:500;margin-bottom:2px">Orange Polska</p>
+        <p class="mono small text2">260-03 · B3 (1800) · B8 (900) · B20 (800) · LTE-M</p>
+      </div>
+      <button onclick="event.stopPropagation();connOp('26003','Orange PL')" class="small">Connect</button>
+    </div>
+  </div>
+
+  <div id="op-scan-res"></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TAB: RAT & BANDS
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="tp-rb" class="tp">
+  <div class="grid2 mb16">
+    <div>
+      <p class="small text2 bold mb8" style="text-transform:uppercase;letter-spacing:.05em">Radio Access Technology (AT+URAT)</p>
+      <!-- R510S modes (US LTE-M/NB-IoT) -->
+      <div id="rat-r510s" style="display:flex;flex-direction:column;gap:5px">
+        <label class="op-row" style="cursor:pointer"><input type="radio" name="rat" value="7"> <span class="f1">LTE-M (Cat-M1) only</span> <code class="small text2">URAT=7</code></label>
+        <label class="op-row" style="cursor:pointer"><input type="radio" name="rat" value="8"> <span class="f1">NB-IoT only</span> <code class="small text2">URAT=8</code></label>
+        <label class="op-row" style="cursor:pointer"><input type="radio" name="rat" value="7,8"> <span class="f1">LTE-M + NB-IoT</span> <code class="small text2">URAT=7,8</code></label>
+        <label class="op-row" style="cursor:pointer"><input type="radio" name="rat" value="9"> <span class="f1">LTE Full (Cat-4)</span> <code class="small text2">URAT=9</code></label>
+      </div>
+      <!-- EG91-E/EX modes (B524 / M524) -->
+      <div id="rat-r524" style="display:none;flex-direction:column;gap:5px">
+        <div class="card mb8" style="padding:8px 12px;border-color:rgba(245,158,11,.3)">
+          <p class="small yellow" id="rat-r524-note">B524/M524 — Quectel EG91-E/EX (LTE Cat 1 + 2G/3G). Konfiguracja RAT przez AT+QCFG="nwscanmode". Tryby LTE-M/NB-IoT są niedostępne.</p>
+        </div>
+        <label class="op-row" style="cursor:pointer"><input type="radio" name="rat" value="0"> <span class="f1">AUTO (LTE + UMTS + GSM)</span> <code class="small text2">nwscanmode=0</code></label>
+        <label class="op-row" style="cursor:pointer"><input type="radio" name="rat" value="3"> <span class="f1">LTE Cat 1 only</span> <code class="small text2">nwscanmode=3</code></label>
+        <label class="op-row" style="cursor:pointer"><input type="radio" name="rat" value="1"> <span class="f1">GSM/EGPRS only</span> <code class="small text2">nwscanmode=1</code></label>
+      </div>
+      <!-- BG95-M5 modes (M404 Global) -->
+      <div id="rat-m404" style="display:none;flex-direction:column;gap:5px">
+        <div class="card mb8" style="padding:8px 12px;border-color:rgba(245,158,11,.3)">
+          <p class="small yellow">M404 — Quectel BG95-M5 (LTE-M + NB-IoT + 2G/GPRS). Konfiguracja RAT przez AT+QCFG="nwscanmode" + AT+QCFG="iotopmode".</p>
+        </div>
+        <label class="op-row" style="cursor:pointer"><input type="radio" name="rat" value="0"> <span class="f1">AUTO (LTE-M + NB-IoT + GSM)</span> <code class="small text2">nwscanmode=0</code></label>
+        <label class="op-row" style="cursor:pointer"><input type="radio" name="rat" value="3"> <span class="f1">LTE only (M1 + NB-IoT)</span> <code class="small text2">nwscanmode=3</code></label>
+        <label class="op-row" style="cursor:pointer"><input type="radio" name="rat" value="1"> <span class="f1">GSM/GPRS only</span> <code class="small text2">nwscanmode=1</code></label>
+      </div>
+      <div class="flex gap8 mt8">
+        <button onclick="getRat()"><i class="ti ti-refresh"></i> Get</button>
+        <button onclick="setRat()" class="success"><i class="ti ti-check"></i> Apply</button>
+      </div>
+    </div>
+    <div>
+      <p class="small text2 bold mb8" style="text-transform:uppercase;letter-spacing:.05em">Band Mask</p>
+      <div class="card mb8 text2 mono small" style="padding:9px 12px">
+        Current mask: <span id="bm-raw">—</span>
+      </div>
+      <div class="flex gap8 flex-wrap mb12">
+        <button onclick="getBm()"><i class="ti ti-refresh"></i> Get</button>
+        <button onclick="setBm()" class="success"><i class="ti ti-check"></i> Apply</button>
+        <button onclick="allBm()">All Bands</button>
+        <span id="bm-presets-us">
+          <button onclick="selectCarrierBands('att')">ATT</button>
+          <button onclick="selectCarrierBands('vzw')">VZW</button>
+          <button onclick="selectCarrierBands('tmo')">TMO US</button>
+        </span>
+        <span id="bm-presets-eu" style="display:none">
+          <button onclick="selectCarrierBands('orange_pl')">Orange PL</button>
+          <button onclick="selectCarrierBands('tmo_pl')">T-Mobile PL</button>
+          <button onclick="selectCarrierBands('plus_pl')">Plus PL</button>
+          <button onclick="selectCarrierBands('play_pl')">Play PL</button>
+          <button onclick="selectCarrierBands('eu_all')">All EU</button>
+        </span>
+      </div>
+      <p class="small text2 bold mb8" style="text-transform:uppercase;letter-spacing:.05em">Modem Power</p>
+      <div class="flex gap8 flex-wrap">
+        <button onclick="atCmd('AT+CFUN=0')">Airplane</button>
+        <button onclick="atCmd('AT+CFUN=1')">Full</button>
+        <button onclick="atCmd('AT+CFUN=15')">Reboot Modem</button>
+      </div>
+    </div>
+  </div>
+  <p class="small text2 bold mb8" style="text-transform:uppercase;letter-spacing:.05em">LTE Band Selection</p>
+  <div class="band-grid" id="band-grid"></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TAB: ANTENNA
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="tp-an" class="tp">
+  <p class="text2 small mb12">Rotate directional antenna, log RSRP at each azimuth. Lock to a cell first (Cells tab) for consistent readings.</p>
+  <div class="grid2 mb12">
+    <div class="card">
+      <div class="card-title">Azimuth Input</div>
+      <div class="flex justify-between items-center mb8">
+        <span class="text2">Direction</span>
+        <span id="az-v" class="mono" style="font-size:20px;font-weight:600">0°</span>
+      </div>
+      <input type="range" min="0" max="359" value="0" id="az-sl"
+             oninput="document.getElementById('az-v').textContent=this.value+'°'" step="5">
+      <div class="az-compass mt8"><span>N 0°</span><span>E 90°</span><span>S 180°</span><span>W 270°</span><span>N 360°</span></div>
+      <div class="flex gap8 mb8 mt12">
+        <button onclick="setAz(0)">N</button><button onclick="setAz(45)">NE</button>
+        <button onclick="setAz(90)">E</button><button onclick="setAz(135)">SE</button>
+        <button onclick="setAz(180)">S</button><button onclick="setAz(225)">SW</button>
+        <button onclick="setAz(270)">W</button><button onclick="setAz(315)">NW</button>
+      </div>
+      <input type="text" id="az-note" placeholder="Note (location, height, …)" style="width:100%;margin-bottom:8px">
+      <button onclick="logAnt()" class="primary" style="width:100%"><i class="ti ti-plus"></i> Log Signal at This Azimuth</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Signal vs Direction</div>
+      <div id="polar-wrap"><canvas id="pc" aria-label="Polar radar chart"></canvas></div>
+      <p class="text2 small" style="text-align:center;margin-top:5px">Larger area = stronger RSRP</p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="flex items-center justify-between mb8">
+      <span class="card-title" style="margin:0">Measurement Log</span>
+      <div class="flex gap8">
+        <button onclick="expAnt()" class="small"><i class="ti ti-download"></i> CSV</button>
+        <button onclick="clrAnt()" class="small danger"><i class="ti ti-trash"></i> Clear</button>
+      </div>
+    </div>
+    <div class="log-hdr" style="grid-template-columns:60px 60px 80px 75px 75px 70px 1fr">
+      <span>AZ°</span><span>BAND</span><span>CELL</span><span>RSRP</span><span>RSRQ</span><span>TIME</span><span>NOTE</span>
+    </div>
+    <div id="ant-log"><p class="text2 small" style="text-align:center;padding:14px 0">No measurements yet</p></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TAB: BEST-PROVIDER TEST WIZARD
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="tp-wz" class="tp">
+  <div class="card mb12">
+    <div class="card-title">Automated Provider Comparison Test</div>
+    <p class="text2 small mb12">Connects to each operator in sequence, samples RSRP/RSRQ 10× over 30 seconds, computes a composite score, then restores auto-mode. Takes ~5–8 min total.</p>
+    <!-- US operators -->
+    <div id="wz-ops-us" class="flex gap8 flex-wrap mb12">
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-att" checked> AT&amp;T (310-410)</label>
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-vzw" checked> Verizon (311-480)</label>
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-tmo" checked> T-Mobile US (310-260)</label>
+    </div>
+    <!-- EU / PL operators -->
+    <div id="wz-ops-eu" class="flex gap8 flex-wrap mb12" style="display:none">
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-org" checked> Orange PL (260-03)</label>
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-tpl" checked> T-Mobile PL (260-02)</label>
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-plu" checked> Plus (260-01)</label>
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-ply" checked> Play (260-06)</label>
+    </div>
+    <div id="wz-ops-eu-ltem" class="flex gap8 flex-wrap mb12" style="display:none">
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-org-ltem" checked> Orange PL (260-03)</label>
+    </div>
+    <!-- M404 Global LTE-M operators -->
+    <div id="wz-ops-m404" class="flex gap8 flex-wrap mb12" style="display:none">
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-m404-att" checked> AT&amp;T (310-410)</label>
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-m404-vzw" checked> Verizon (311-480)</label>
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-m404-tmo" checked> T-Mobile US (310-260)</label>
+    </div>
+    <!-- M524 EU operators -->
+    <div id="wz-ops-m524" class="flex gap8 flex-wrap mb12" style="display:none">
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-m524-org" checked> Orange PL (260-03)</label>
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-m524-tpl" checked> T-Mobile PL (260-02)</label>
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-m524-plu" checked> Plus (260-01)</label>
+      <label class="flex items-center gap8"><input type="checkbox" id="wz-m524-ply" checked> Play (260-06)</label>
+    </div>
+    <div class="flex gap8">
+      <button id="wz-run" onclick="runWizard()" class="primary"><i class="ti ti-player-play"></i> Run Test</button>
+      <button id="wz-stop" onclick="stopWizard()" class="danger" style="display:none"><i class="ti ti-player-stop"></i> Stop</button>
+    </div>
+  </div>
+
+  <div class="card mb12">
+    <div class="card-title">Progress</div>
+    <div id="wz-steps"></div>
+  </div>
+
+  <div class="card" id="wz-results" style="display:none">
+    <div class="card-title">Scoring Results</div>
+    <p class="text2 small mb12">Score 0–100 combining: RSRP (50%), RSRQ (30%), stability/std-dev (20%)</p>
+    <div id="wz-score-cards"></div>
+    <div class="card mt12" style="background:var(--bg3)">
+      <div class="card-title">Recommendation</div>
+      <div id="wz-recommendation"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TAB: LOG
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="tp-lg" class="tp">
+  <div class="flex items-center justify-between mb10">
+    <span style="font-size:14px;font-weight:500">Signal Log</span>
+    <div class="flex gap8">
+      <button onclick="startLog()" id="log-start-btn" class="success"><i class="ti ti-record-mail"></i> Start Logging</button>
+      <button onclick="stopLog()"  id="log-stop-btn" style="display:none" class="danger"><i class="ti ti-player-stop"></i> Stop</button>
+      <button onclick="expLog()"><i class="ti ti-download"></i> CSV</button>
+      <button onclick="clrLog()" class="danger"><i class="ti ti-trash"></i> Clear</button>
+    </div>
+  </div>
+  <div class="card mb10 grid4" style="font-size:12px">
+    <div><span class="text2">Samples: </span><span id="lg-count" class="mono">0</span></div>
+    <div><span class="text2">Duration: </span><span id="lg-dur" class="mono">—</span></div>
+    <div><span class="text2">Avg RSRP: </span><span id="lg-avg-rsrp" class="mono">—</span></div>
+    <div><span class="text2">Best RSRP: </span><span id="lg-best-rsrp" class="mono">—</span></div>
+  </div>
+  <div class="log-hdr"><span>TIME</span><span>OP</span><span>BAND</span><span>RSRP</span><span>RSRQ</span><span id="log-sinr-col">SINR</span><span>PCI</span><span>CELL</span></div>
+  <div id="log-rows" style="max-height:380px;overflow-y:auto">
+    <p class="text2 small" style="padding:16px;text-align:center">Start logging to record samples</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TAB: CONSOLE
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="tp-mp" class="tp">
+  <div class="flex items-center gap8 mb8" style="flex-wrap:wrap">
+    <button class="small" onclick="mapLocate()"><i class="ti ti-current-location"></i> Locate</button>
+    <button class="small" onclick="mapLoadTowers()"><i class="ti ti-tower-broadcast"></i> Load Towers</button>
+    <button class="small" id="btn-op-filter" onclick="mapToggleFilter()" title="Toggle: show all operators or only the connected one"><i class="ti ti-filter"></i> All Operators</button>
+    <button class="small" id="btn-track" onclick="mapToggleTrack()"><i class="ti ti-route"></i> Record Track</button>
+    <span id="map-status" class="small text2" style="margin-left:8px">Open Map tab to initialise</span>
+  </div>
+  <div id="map-container" style="height:460px;border-radius:6px;overflow:hidden;background:#111"></div>
+  <div class="flex items-center gap8 mt8" style="flex-wrap:wrap">
+    <span class="small text2">OpenCelliD API Key:</span>
+    <input type="password" id="map-key-input" placeholder="paste key here…"
+           style="font-family:var(--font-mono);font-size:12px;width:260px"
+           oninput="mapKeySave()">
+    <span class="small text2">·</span>
+    <a href="https://opencellid.org/" target="_blank" class="small" style="color:var(--accent)">Get free key</a>
+    <span class="small text2">·</span>
+    <span class="small text2">Proxy: <code>node tools/proxy.js</code></span>
+  </div>
+</div>
+
+<div id="tp-co" class="tp">
+  <p class="small text2 bold mb8" style="text-transform:uppercase;letter-spacing:.05em">Quick Commands</p>
+  <div class="flex flex-wrap gap8 mb12">
+    <button class="small" onclick="qr('ATI')">ATI</button>
+    <button class="small" onclick="qr('AT+CEREG=2')">CEREG=2</button>
+    <button class="small" onclick="qr('AT+CEREG?')">CEREG?</button>
+    <button class="small" onclick="qr('AT+CESQ')">CESQ</button>
+    <button class="small" onclick="qr('AT+CSQ')">CSQ</button>
+    <button class="small" id="btn-ucged-co" onclick="qrUcged()">UCGED=5</button>
+    <button class="small" onclick="qr('AT+COPS?')">COPS?</button>
+    <button class="small" onclick="qr('AT+URAT?')">URAT?</button>
+    <button class="small" onclick="qr('AT+UBANDMASK?')">UBANDMASK?</button>
+    <button class="small" onclick="qr('AT+CGMM')">CGMM</button>
+    <button class="small" onclick="qr('AT+CGSN')">IMEI</button>
+    <button class="small" onclick="qr('AT+CCID')">ICCID</button>
+    <button class="small" onclick="qr('AT+ULOCKCREG?')">LOCKCREG?</button>
+    <button class="small" onclick="qr('AT+CGDCONT?')">APN</button>
+    <button class="small" onclick="qr('AT+CMEE=2')">CMEE=2</button>
+    <button class="small" onclick="qr('AT+CFUN?')">CFUN?</button>
+  </div>
+  <div id="co-out" class="console"></div>
+  <div class="flex gap8 mt8">
+    <input type="text" id="co-in" placeholder="AT command…" style="flex:1;font-family:var(--font-mono);font-size:12px"
+           onkeydown="if(event.key==='Enter')coSend()">
+    <button onclick="coSend()"><i class="ti ti-send"></i> Send</button>
+    <button onclick="document.getElementById('co-out').innerHTML=''" title="Clear"><i class="ti ti-trash"></i></button>
+  </div>
+  <div class="card mt12">
+    <div class="card-title">Bridge Firmware (flash to B-SoM via Particle CLI)</div>
+    <pre class="console" style="height:auto;max-height:240px;font-size:11px;line-height:1.6"><span class="sys">// src/rangeTest.cpp — see firmware file in project</span>
+<span class="rx">SYSTEM_MODE(SEMI_AUTOMATIC);
+SYSTEM_THREAD(ENABLED);
+
+static bool atCb(int,const char*b,int l,void*){
+  if(b&&l>0)Serial.write((uint8_t*)b,l);
+  return true;
+}
+void setup(){ Serial.begin(115200); }
+void loop(){
+  if(Serial.available()){
+    String s=Serial.readStringUntil('\n');
+    s.trim();
+    if(s.length())
+      Cellular.command(atCb,NULL,30000,"%s\r\n",s.c_str());
+  }
+}</span></pre>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════════════════════════════ -->
+<script>
+// ── Serial state ─────────────────────────────────────────────────────────────
+const ENC = new TextEncoder(), DEC = new TextDecoder();
+let port = null, wtr = null, rdr = null, conn = false;
+let buf = '', pRes = null, pTmr = null;
+
+// ── BLE state (Nordic UART Service) ──────────────────────────────────────────
+const NUS_SVC = '6e400001-b5b3-f393-e0a9-e50e24dcca9e';
+const NUS_TX  = '6e400003-b5b3-f393-e0a9-e50e24dcca9e'; // device→browser NOTIFY
+const NUS_RX  = '6e400002-b5b3-f393-e0a9-e50e24dcca9e'; // browser→device WRITE_WO_RESP
+let bleDevice = null, bleServer = null, bleRxChar = null, bleTxChar = null, bleMode = false;
+
+// ── Cell / signal state ───────────────────────────────────────────────────────
+let cell = { rsrp: null, rsrq: null, sinr: null, ci: 0, op: '', mn: '', pci: '', ear: '', band: '' };
+let sigH = { l: [], r: [], q: [], s: [] };
+
+// ── Log state ─────────────────────────────────────────────────────────────────
+let logEntries = [], logActive = false, logTimer = null, logStart = null;
+
+// ── Antenna state ─────────────────────────────────────────────────────────────
+let ants = [];
+
+// ── Map state ─────────────────────────────────────────────────────────────────
+const MAP_PROXY    = 'http://127.0.0.1:3741';
+const MAP_RADIUS_KM = 0.9;  // half-side of tower search box in km → 1.8×1.8 km = 3.24 km² (limit: 4 km²)
+const MAP_KEY_LS   = 'lte_analyzer_ocid_key';  // localStorage key name
+let mapObj         = null;  // Leaflet map instance
+let mapLayerTowers = null;  // L.layerGroup for tower markers
+let mapLayerTrack  = null;  // L.layerGroup for GPS track segments
+let mapMarkerMe    = null;  // device position marker
+let mapLastPos     = null;  // { lat, lon, source:'gps'|'cell' }
+let mapRecording   = false; // track recording active
+let mapTrackPts    = [];    // [{ lat, lon, rsrp }]
+let mapFilterOp    = false; // true = show only serving operator's towers
+let mapWatchId     = null;  // navigator.geolocation.watchPosition handle
+
+// ── Wizard state ──────────────────────────────────────────────────────────────
+let wizardRunning = false, wizardStop = false;
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+let hChart = null, polChart = null;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Serial connection
+// ─────────────────────────────────────────────────────────────────────────────
+async function doConn() {
+  if (!navigator.serial) {
+    alert('Web Serial API requires Chrome or Edge (desktop). Not available in this browser.');
+    return;
+  }
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: parseInt(document.getElementById('baud').value) || 115200 });
+    wtr = port.writable.getWriter();
+    conn = true;
+    setSt('Connected', 'ok');
+    document.getElementById('btn-conn').style.display = 'none';
+    document.getElementById('btn-disc').style.display = '';
+    document.getElementById('btn-poll').style.display = '';
+    readLoop();
+    // Wait for firmware $$READY$$ — firmware setup() sends it after modem power-on
+    // which takes delay(1500) + waitFor(Cellular.isOn). Poll up to 10s.
+    setSt('Waiting for firmware…', 'warn');
+    await new Promise(res => {
+      const deadline = setTimeout(res, 10000);
+      const poll = setInterval(() => {
+        if (buf.includes('READY')) { clearTimeout(deadline); clearInterval(poll); res(); }
+      }, 50);
+    });
+    buf = '';
+    // Now firmware is in loop() — send INIT and wait for modem setup to complete
+    setSt('Initializing modem…', 'warn');
+    const initR = await atCmd('$$INIT$$', 20000).catch(() => null);
+    setSt(initR && initR.includes('INIT_OK') ? 'Connected' : 'Connected (init timeout)', initR && initR.includes('INIT_OK') ? 'ok' : 'warn');
+    // If modem is stuck in manual COPS mode (e.g. wizard interrupted), reset it.
+    // Only send COPS=0 when mode=1 — avoids clearing a working registration unnecessarily
+    // (sending COPS=0 deregisters the modem and invalidates the HAL CGI cache, causing
+    // cellular_global_identity() to fail and emitCeregFromSdk() to return stat=0).
+    const copsChk = await atCmd('AT+COPS?', 12000).catch(() => null);
+    const copsModeIdx = copsChk ? copsChk.indexOf('+COPS:') : -1;
+    const copsMode = copsModeIdx >= 0 ? parseInt(copsChk.slice(copsModeIdx + 6).trim()) : -1;
+    if (copsMode === 1) {
+      setSt('Resetting to automatic mode…', 'warn');
+      await atCmd('AT+COPS=0', 10000).catch(() => null);
+      await delay(6000);  // allow modem to register and emit CEREG URC (updates HAL CGI cache)
+    }
+    await doRefresh();
+  } catch (e) {
+    setSt('Error: ' + e.message, 'err');
+  }
+}
+
+async function doDisc() {
+  stopPoll(); stopLog(); wizardStop = true;
+  if (bleMode) {
+    bleMode = false;
+    try { if (bleTxChar) await bleTxChar.stopNotifications(); } catch (_) {}
+    try { if (bleServer) bleServer.disconnect(); } catch (_) {}
+    bleDevice = null; bleServer = null; bleRxChar = null; bleTxChar = null;
+    document.getElementById('btn-ble').style.display = '';
+    document.getElementById('baud').style.display = '';
+  } else {
+    try { if (rdr) await rdr.cancel(); } catch (_) {}
+    try { if (wtr) { wtr.releaseLock(); wtr = null; } } catch (_) {}
+    try { if (port) await port.close(); } catch (_) {}
+    port = null; rdr = null;
+  }
+  conn = false;
+  setSt('Disconnected', '');
+  document.getElementById('btn-conn').style.display = '';
+  document.getElementById('btn-disc').style.display = 'none';
+  document.getElementById('btn-poll').style.display = 'none';
+}
+
+// ── BLE connect / events ──────────────────────────────────────────────────────
+async function connectBle() {
+  if (!navigator.bluetooth) {
+    alert('Web Bluetooth requires Chrome/Edge (desktop) or Bluefy (iOS). Not available in this browser.');
+    return;
+  }
+  try {
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [NUS_SVC] }]
+    });
+    bleDevice.addEventListener('gattserverdisconnected', onBleDisconnected);
+    bleServer = await bleDevice.gatt.connect();
+    // Retry up to 3× — Chrome may need a moment after connect for GATT discovery,
+    // and a stale GATT cache can cause "No Services" on the first attempt.
+    let svc;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { svc = await bleServer.getPrimaryService(NUS_SVC); break; }
+      catch (e) {
+        if (attempt === 2) throw new Error('NUS service not found. In Chrome go to chrome://settings/content/bluetooth, remove this device, then try again. (' + e.message + ')');
+        await new Promise(r => setTimeout(r, 600));
+      }
+    }
+    bleTxChar = await svc.getCharacteristic(NUS_TX);  // device→browser NOTIFY
+    bleRxChar = await svc.getCharacteristic(NUS_RX);  // browser→device WRITE
+    await bleTxChar.startNotifications();
+    bleTxChar.addEventListener('characteristicvaluechanged', onBleRx);
+    bleMode = true; conn = true;
+    setSt('BLE: ' + (bleDevice.name || 'LTE-Analyzer'), 'ok');
+    document.getElementById('btn-ble').style.display  = 'none';
+    document.getElementById('btn-conn').style.display = 'none';
+    document.getElementById('baud').style.display     = 'none';
+    document.getElementById('btn-disc').style.display = '';
+    document.getElementById('btn-poll').style.display = '';
+    // Same init sequence as USB
+    setSt('Waiting for firmware…', 'warn');
+    await new Promise(res => {
+      const deadline = setTimeout(res, 10000);
+      const poll = setInterval(() => {
+        if (buf.includes('READY')) { clearTimeout(deadline); clearInterval(poll); res(); }
+      }, 50);
+    });
+    buf = '';
+    setSt('Initializing modem…', 'warn');
+    const initR = await atCmd('$$INIT$$', 20000).catch(() => null);
+    setSt(initR && initR.includes('INIT_OK') ? 'BLE Connected' : 'BLE Connected (init timeout)',
+          initR && initR.includes('INIT_OK') ? 'ok' : 'warn');
+    const copsChk = await atCmd('AT+COPS?', 12000).catch(() => null);
+    const copsModeIdx = copsChk ? copsChk.indexOf('+COPS:') : -1;
+    const copsMode = copsModeIdx >= 0 ? parseInt(copsChk.slice(copsModeIdx + 6).trim()) : -1;
+    if (copsMode === 1) {
+      setSt('Resetting to automatic mode…', 'warn');
+      await atCmd('AT+COPS=0', 10000).catch(() => null);
+      await delay(6000);
+    }
+    await doRefresh();
+  } catch (e) {
+    setSt('BLE Error: ' + e.message, 'err');
+    bleMode = false; conn = false; bleDevice = null;
+  }
+}
+
+function onBleRx(event) {
+  const txt = DEC.decode(event.target.value);
+  buf += txt;
+  appendConsole(txt, 'rx');
+  checkPending();
+}
+
+function onBleDisconnected() {
+  if (!bleMode) return;
+  bleMode = false; conn = false;
+  bleDevice = null; bleServer = null; bleRxChar = null; bleTxChar = null;
+  stopPoll();
+  setSt('BLE Disconnected', '');
+  document.getElementById('btn-ble').style.display  = '';
+  document.getElementById('btn-conn').style.display = '';
+  document.getElementById('baud').style.display     = '';
+  document.getElementById('btn-disc').style.display = 'none';
+  document.getElementById('btn-poll').style.display = 'none';
+}
+
+async function readLoop() {
+  if (!port || !port.readable) return;
+  rdr = port.readable.getReader();
+  try {
+    while (true) {
+      const { value, done } = await rdr.read();
+      if (done) break;
+      const txt = DEC.decode(value);
+      buf += txt;
+      appendConsole(txt, 'rx');
+      checkPending();
+    }
+  } catch (_) {}
+  finally { try { rdr.releaseLock(); } catch (_) {} }
+}
+
+function checkPending() {
+  if (!pRes) return;
+  // AT+COPS=? scan ends with range indicators like ,(0-4),(0-2)\r\n.
+  const copsDone = buf.includes('+COPS:') && /\(0-\d+\)\s*[\r\n]/.test(buf);
+  // AT+COPS? query response — EG91-E only.
+  // Enabling for R510S would resolve early (before OK), leaving a stale \r\nOK\r\n that arrives
+  // after pRes is set for the next command (AT+UCELLINFO?) and prematurely resolves it.
+  // On R510S, use a longer atCmd timeout instead so the full response (including OK) arrives.
+  const _isQuectel = ['eq91-eu','m404','m524'].includes(getCurDev());
+  const copsQueryDone = _isQuectel && !buf.includes('(') && /\+COPS:[^\r\n]*\r?\n/.test(buf);
+  // AT+QENG response is complete when at least one full +QENG: line is present.
+  // Same delayed-OK pattern as +COPS: — resolve immediately so pQENG gets the data.
+  const qengDone = /\+QENG:[^\r\n]+\r?\n/.test(buf);
+  // AT+QCFG="band" has the same delayed-OK pattern on EG91-E.
+  const qcfgDone = /\+QCFG:[^\r\n]+\r?\n/.test(buf);
+  // AT+UCELLINFO? on R510S: modem may take >10 s to populate HISTORIC data after registration.
+  // Resolve as soon as the serving-cell line arrives so the timeout doesn't fire first.
+  // The stale OK arrives after scanCells returns and is harmlessly cleared by the next atCmd.
+  const ucellinfoDone = !_isQuectel && /\+UCELLINFO:[^\r\n]+\r?\n/.test(buf);
+  // +CME ERROR / +CMS ERROR are modem error codes — they terminate a command like ERROR does,
+  // but start with '+' so they don't match the plain ERROR pattern above.
+  const cmeError = /\+CM[ES]\s+ERROR/.test(buf);
+  if (/\r\n(OK|ERROR[^\r\n]*)\r?\n?/.test(buf) || /\n(OK|ERROR)\n/.test(buf) ||
+      buf.includes('TIMEOUT') || buf.includes('INIT_OK') || copsDone || copsQueryDone || qengDone || qcfgDone || ucellinfoDone || cmeError) {
+    clearTimeout(pTmr);
+    const raw = buf; buf = '';
+    const cb = pRes; pRes = null;
+    cb(raw);
+  }
+}
+
+function atCmd(cmd, tms = 10000) {
+  if (!conn) return Promise.reject(new Error('Not connected'));
+  if (pRes) return new Promise(res => setTimeout(() => atCmd(cmd, tms).then(res).catch(res), 150));
+  return new Promise(res => {
+    buf = ''; pRes = res;
+    pTmr = setTimeout(() => { const raw = buf; buf = ''; const c = pRes; pRes = null; if (c) c(raw + '\r\nTIMEOUT'); }, tms);
+    appendConsole('▶ ' + cmd + '\n', 'tx');
+    if (bleMode) {
+      bleRxChar.writeValueWithoutResponse(ENC.encode(cmd + '\r\n')).catch(e => appendConsole('BLE: ' + e.message + '\n', 'err'));
+    } else {
+      wtr.write(ENC.encode(cmd + '\r\n'));
+    }
+  });
+}
+
+function qr(cmd) { openTab('co'); atCmd(cmd, 20000).then(parseAll).catch(e => appendConsole('Error: ' + e.message + '\n', 'err')); }
+async function qrUcged() {
+  openTab('co');
+  try {
+    if (['eq91-eu','m404','m524'].includes(getCurDev())) {
+      const r  = await atCmd('AT+QENG="servingcell"', 5000);
+      parseAll(r);
+      const r2 = await atCmd('AT+QENG="neighbourcell"', 10000);
+      parseAll(r2);
+    } else {
+      // SARA-R510S: AT+UCGED not supported; use AT+UCELLINFO?
+      const r = await atCmd('AT+UCELLINFO?', 25000);
+      parseAll(r);
+    }
+  } catch(e) { appendConsole('Error: ' + e.message + '\n', 'err'); }
+}
+function coSend() {
+  const inp = document.getElementById('co-in');
+  const cmd = inp.value.trim(); if (!cmd) return;
+  inp.value = '';
+  atCmd(cmd, 20000).then(parseAll).catch(e => appendConsole('Error: ' + e.message + '\n', 'err'));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Parsing
+// ─────────────────────────────────────────────────────────────────────────────
+function parseAll(raw) {
+  if (!raw) return;
+  if (raw.includes('+CEREG:'))    pCEREG(raw);
+  if (raw.includes('+CESQ:'))     pCESQ(raw);
+  if (raw.includes('+QENG:'))     pQENG(raw);
+  if (raw.includes('+UCGED:') || /^[^\+\r\n]/.test(raw)) pUCGED(raw);
+  if (raw.includes('+UCELLINFO:'))pUCELLINFO(raw);
+  if (raw.includes('+COPS:'))     pCOPS(raw);
+  if (raw.includes('+URAT:'))     pURAT(raw);
+  if (raw.includes('+QCFG:'))     pQCFG(raw);
+  if (raw.includes('+UBANDMASK:'))pBM(raw);
+}
+
+function pCEREG(raw) {
+  const m = raw.match(/\+CEREG:\s*\d+,(\d+)(?:,"([0-9A-Fa-f]+)","([0-9A-Fa-f]+)",(\d+))?/);
+  if (!m) return;
+  const statMap = ['Not registered', 'Registered (home)', 'Searching', 'Denied', 'Unknown', 'Roaming'];
+  const stat = statMap[+m[1]] || 'Status ' + m[1];
+  cell.regStat = stat;
+  // EG91-E: cellular_global_identity() always fails, CEREG always stat=0 — pCOPS is authoritative.
+  // R510S: in SEMI_AUTOMATIC mode CEREG stat=0 even when registered — pCOPS is authoritative.
+  // Neither device should update the status bar from CEREG.
+  const _dev = getCurDev();
+  const eq91  = _dev === 'eq91-eu' || _dev === 'm404' || _dev === 'm524';
+  const r510s = _dev === 'r510s-us' || _dev === 'r510s-eu';
+  if (m[2]) {
+    const tac = parseInt(m[2], 16), ci = parseInt(m[3], 16), act = +m[4];
+    const actMap = eq91
+      ? { 0:'GSM', 2:'UMTS', 7:'LTE Cat 1', 9:'LTE' }
+      : { 0:'GSM', 2:'UMTS', 7:'LTE-M', 8:'NB-IoT', 9:'LTE' };
+    const rat = actMap[act] || 'RAT ' + act;
+    cell.ci = ci;
+    const enb = Math.floor(ci / 256), sec = ci % 256;
+    tx('ci-id', ci + ' (0x' + ci.toString(16).toUpperCase() + ')');
+    tx('ci-en', enb + ' / ' + sec);
+    tx('ci-ta', tac + ' (0x' + m[2].toUpperCase() + ')');
+    tx('r-rat', rat);
+    tx('ci-st', stat);
+    if (!eq91 && !r510s) setSt(stat + ' · ' + rat, m[1] === '1' || m[1] === '5' ? 'ok' : 'warn');
+  } else {
+    tx('ci-st', stat);
+    if (!eq91 && !r510s) setSt(stat, m[1] === '1' || m[1] === '5' ? 'ok' : 'warn');
+  }
+}
+
+function pCESQ(raw) {
+  const m = raw.match(/\+CESQ:\s*\d+,\d+,\d+,\d+,(\d+),(\d+)/);
+  if (!m) return;
+  const rqv = +m[1], rpv = +m[2];
+  if (rpv >= 255) return;  // no valid signal
+  const rsrp = rpv - 141;
+  const rsrq = rqv < 255 ? (rqv / 2) - 19.5 : null;  // null on GSM (rqv=255)
+  cell.rsrp = rsrp;
+  if (rsrq !== null) cell.rsrq = rsrq;
+  updSig(rsrp, rsrq, null);
+  // R510S: UCELLINFO pushes full history (RSRP+RSRQ) — skip CESQ to avoid duplicates.
+  // Quectel: QENG pushes full history (RSRP+RSRQ+SINR). CESQ skipped because SDK may not
+  //          return RSRQ on EG91-EX, producing null-filled sigH.q and broken chart lines.
+  const _dev = getCurDev();
+  if (_dev === 'r510s-us' || _dev === 'r510s-eu') return;
+  if (_dev === 'eq91-eu' || _dev === 'm404' || _dev === 'm524') return;
+  pushHistory(rsrp, rsrq, null); if (logActive) addLogEntry();
+}
+
+function pUCGED(raw) {
+  const lines = raw.split('\n');
+  let srvDone = false;
+  const nbrs = [];
+  // Detect mode from +UCGED: <n> header — 2 = on-demand (older u-blox), 5 = full scan (legacy)
+  const isMode2 = /\+UCGED:\s*2/.test(raw);
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t || t.startsWith('+UCGED:') || t === 'OK' || t === 'ERROR') continue;
+
+    if (t.startsWith('NWSRCH,')) {
+      // Mode 5 neighbor cell (R410M)
+      const p = t.slice(7).split(',');
+      if (p.length >= 4) {
+        const rp = +p[2], rq = +p[3];
+        nbrs.push({ ear: p[0].trim(), pci: p[1].trim(),
+          rsrp: rp < 0 ? rp : rp - 141, rsrq: rq < 0 ? rq : rq / 2 - 19.5 });
+      }
+    } else if (!srvDone && /^\d/.test(t)) {
+      const p = t.split(',');
+      let ear, pci, rsrp, rsrq;
+
+      if (isMode2 && p.length >= 12) {
+        // SARA-R524S mode 2: earfcn,dl_bw,ul_earfcn,ul_bw,mcc,mnc,tac,cellId,pci,band,rsrp,rsrq
+        ear = p[0]?.trim(); pci = p[8]?.trim();
+        const rp = +p[10], rq = +p[11];
+        // Values are direct dBm (negative); guard against index encoding just in case
+        rsrp = rp < 0 ? rp : rp - 141;
+        rsrq = rq < 0 ? rq : rq / 2 - 19.5;
+      } else if (!isMode2 && p.length >= 14) {
+        // Legacy mode 5 full scan: fields [3]=earfcn, [11]=pci, [12]=rsrp, [13]=rsrq
+        ear = p[3]?.trim(); pci = p[11]?.trim();
+        const rp = +p[12], rq = +p[13];
+        rsrp = rp < 0 ? rp : rp - 141;
+        rsrq = rq < 0 ? rq : rq / 2 - 19.5;
+      }
+
+      if (ear && pci !== undefined && !isNaN(rsrp) && rsrp > -150) {
+        cell.ear = ear; cell.pci = pci;
+        cell.band = e2band(+ear);
+        tx('r-ear', ear); tx('r-pci', pci);
+        tx('r-bnd', cell.band); tx('r-frq', e2freq(+ear));
+        const srv = document.getElementById('srv-row');
+        if (srv) srv.innerHTML =
+          `<span class="mono">${cell.ci || '—'}</span>` +
+          `<span class="mono">${ear}</span>` +
+          `<span class="mono">${pci}</span>` +
+          `<span class="mono" style="color:${sc(rsrp)}">${rsrp} dBm</span>` +
+          `<span class="mono" style="color:${sq(rsrq)}">${rsrq.toFixed(1)} dB</span>` +
+          `<span class="mono">${cell.band}</span><span></span>`;
+        updSig(rsrp, rsrq, null); srvDone = true;
+      }
+    }
+  }
+  renderNeighbors(nbrs);
+}
+
+// u-blox SARA-R510S: AT+UCELLINFO?
+// Serving cell (type=5): mode,type,MCC,MNC,CI,PCI,TAC(hex),RSRP_idx,RSRQ,...
+// Neighbor cell (type=6): mode,type,EARFCN,PCI,RSRP_idx,RSRQ
+// RSRP: dBm = index - 141; RSRQ: dB ≈ -19.5 + (index-1)*0.5 for index 1-46
+function pUCELLINFO(raw) {
+  const nbrs = [];
+  let srvDone = false;
+  for (const line of raw.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('+UCELLINFO:')) continue;
+    const p = t.slice(11).trim().split(',');
+    if (p.length < 4) continue;
+    const type = parseInt(p[1]);
+
+    if (type === 5 && !srvDone && p.length >= 9) {
+      // Serving LTE cell
+      const ci     = parseInt(p[4]?.trim());
+      const pci    = p[5]?.trim();
+      const tac    = p[6]?.trim();
+      const rp     = parseInt(p[7]?.trim());
+      const rqRaw  = parseInt(p[8]?.trim());
+      const ear    = p[10]?.trim();
+      // p[14] = SINR index: 0 = not measured (HISTORIC), 1-254 = valid, 255 = invalid
+      // SINR (dB) = sinr_idx * 0.5 - 23.0
+      const snrRaw = p.length > 14 ? parseInt(p[14]?.trim()) : 0;
+      const rsrp   = rp - 141;
+      const rsrq   = (rqRaw >= 0 && rqRaw < 255) ? rqRaw * 0.5 - 19.5 : null;
+      const sinr   = (snrRaw > 0 && snrRaw < 255) ? snrRaw * 0.5 - 23.0 : null;
+      if (isNaN(rsrp) || rsrp < -141 || rsrp > -44) continue;
+      cell.pci = pci;
+      if (!isNaN(ci)) {
+        cell.ci = ci;
+        const enb = Math.floor(ci / 256), sec = ci % 256;
+        tx('ci-id', ci + ' (0x' + ci.toString(16).toUpperCase() + ')');
+        tx('ci-en', enb + ' / ' + sec);
+      }
+      const tacDec = parseInt(tac, 16);
+      if (!isNaN(tacDec)) tx('ci-ta', tacDec + ' (0x' + tac.toUpperCase() + ')');
+      tx('r-pci', pci);
+      if (ear) {
+        const earNum = parseInt(ear);
+        cell.ear = ear; cell.band = e2band(earNum);
+        tx('r-ear', ear);
+        tx('r-bnd', cell.band);
+        tx('r-frq', e2freq(earNum));
+      }
+      const srv = document.getElementById('srv-row');
+      if (srv) srv.innerHTML =
+        `<span class="mono">${!isNaN(ci) ? ci : '—'}</span>` +
+        `<span class="mono">${ear || '—'}</span>` +
+        `<span class="mono">${pci}</span>` +
+        `<span class="mono" style="color:${sc(rsrp)}">${rsrp} dBm</span>` +
+        `<span class="mono">${rsrq !== null ? `<span style="color:${sq(rsrq)}">${rsrq.toFixed(1)} dB</span>` : '—'}</span>` +
+        `<span class="mono">${cell.band || '—'}</span><span></span>`;
+      cell.rsrp = rsrp;
+      if (rsrq !== null) cell.rsrq = rsrq;
+      if (sinr !== null) cell.sinr = sinr;
+      updSig(rsrp, rsrq, sinr);
+      pushHistory(rsrp, rsrq, sinr);
+      if (logActive) addLogEntry();
+      srvDone = true;
+
+    } else if (type === 6 && p.length >= 6) {
+      // Neighbor LTE cell
+      const ear   = p[2]?.trim();
+      const pci   = p[3]?.trim();
+      const rp    = parseInt(p[4]?.trim());
+      const rqRaw = parseInt(p[5]?.trim());
+      const rsrp  = rp - 141;
+      const rsrq  = (rqRaw >= 0 && rqRaw < 255) ? rqRaw * 0.5 - 19.5 : null;
+      if (!isNaN(rsrp) && rsrp > -150 && ear !== '65535') {
+        nbrs.push({ ear, pci, rsrp, rsrq, rat: 'LTE' });
+      }
+    }
+  }
+  renderNeighbors(nbrs);
+}
+
+// Quectel EG91-E/EX/BG95-M5: AT+QENG="servingcell" and AT+QENG="neighbourcell"
+// EG91-E/EX LTE:  "servingcell",state,"LTE","FDD",mcc,mnc,cellId,pcid,earfcn,band,ul_bw,dl_bw,tac,rsrp,rsrq,rssi,sinr
+// BG95-M5 eMTC:   "servingcell",state,"eMTC","FDD",mcc,mnc,cellId,pcid,earfcn,band,ul_bw,dl_bw,tac,rsrp,rsrq,rssi,sinr,srxlev
+// BG95-M5 NBIoT:  "servingcell",state,"NBIoT",mcc,mnc,cellId,pcid,earfcn,band,tac,rsrp,rsrq,rssi,sinr,srxlev
+// Neighbor cell format: "neighbourcell intra/inter","LTE",earfcn,pcid,rsrq,rsrp,...
+function pQENG(raw) {
+  const nbrs = [];
+  let srvDone = false;
+  for (const line of raw.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('+QENG:')) continue;
+    const rest = t.slice(6).trim();
+    const p = rest.split(',');
+    const kind = (p[0] || '').replace(/"/g, '').trim();
+    if (kind === 'servingcell' && !srvDone) {
+      // p[2]=RAT, p[3]=FDD/TDD, p[4]=mcc, p[5]=mnc, p[6]=cellId(hex),
+      // p[7]=pcid, p[8]=earfcn, p[9]=band, p[12]=tac(hex), p[13]=rsrp, p[14]=rsrq
+      const rat = (p[2] || '').replace(/"/g, '').trim();
+      if ((rat === 'LTE' || rat === 'eMTC') && p.length >= 15) {
+        // LTE/eMTC: p[3]=FDD, p[4]=mcc, p[5]=mnc, p[6]=cellId, p[7]=pcid, p[8]=earfcn,
+        //           p[9]=band, p[10]=ul_bw, p[11]=dl_bw, p[12]=tac, p[13]=rsrp, p[14]=rsrq,
+        //           p[15]=rssi, p[16]=sinr  (eMTC adds p[17]=srxlev — ignored)
+        const ear    = p[8]?.trim();
+        const pci    = p[7]?.trim();
+        const rsrp   = parseFloat(p[13]);
+        const rsrq   = parseFloat(p[14]);
+        const band   = parseInt(p[9]?.trim());
+        const ciHex  = (p[6] || '').trim();
+        if (ear && !isNaN(rsrp) && rsrp < 0) {
+          cell.ear = ear; cell.pci = pci;
+          cell.band = band || e2band(+ear);
+          cell.ci = parseInt(ciHex, 16);
+          const tac = (p[12] || '').trim();
+          const sinr = parseFloat(p[16]);
+          const bwMap = {0:'1.4',1:'3',2:'5',3:'10',4:'15',5:'20'};
+          const bw = bwMap[parseInt(p[11]?.trim())];
+          const ratLabel = rat === 'eMTC' ? 'LTE-M' : 'LTE Cat 1';
+          tx('r-rat', ratLabel); tx('r-ear', ear); tx('r-pci', pci);
+          tx('r-bnd', cell.band); tx('r-frq', e2freq(+ear));
+          tx('r-bw', bw ? bw + ' MHz' : '—');
+          tx('ci-id', cell.ci + ' (0x' + cell.ci.toString(16).toUpperCase() + ')');
+          tx('ci-en', Math.floor(cell.ci / 256) + ' / ' + (cell.ci % 256));
+          if (tac) tx('ci-ta', tac + ' (0x' + parseInt(tac).toString(16).toUpperCase() + ')');
+          cell.rsrp = rsrp; cell.rsrq = rsrq; cell.sinr = isNaN(sinr) ? null : sinr;
+          const srv = document.getElementById('srv-row');
+          if (srv) srv.innerHTML =
+            `<span class="mono">${ciHex ? '0x'+ciHex.toUpperCase() : '—'}</span>` +
+            `<span class="mono">${ear}</span>` +
+            `<span class="mono">${pci}</span>` +
+            `<span class="mono" style="color:${sc(rsrp)}">${rsrp} dBm</span>` +
+            `<span class="mono" style="color:${sq(rsrq)}">${rsrq.toFixed(1)} dB</span>` +
+            `<span class="mono">${cell.band}</span><span></span>`;
+          updSig(rsrp, rsrq, cell.sinr);
+          pushHistory(rsrp, rsrq, cell.sinr);
+          if (logActive) addLogEntry();
+          srvDone = true;
+        }
+      } else if (rat === 'NBIoT' && p.length >= 12) {
+        // BG95-M5 NB-IoT: p[3]=mcc, p[4]=mnc, p[5]=cellId, p[6]=pcid, p[7]=earfcn,
+        //                  p[8]=band, p[9]=tac, p[10]=rsrp, p[11]=rsrq, p[12]=rssi, p[13]=sinr
+        const ear   = p[7]?.trim();
+        const pci   = p[6]?.trim();
+        const rsrp  = parseFloat(p[10]);
+        const rsrq  = parseFloat(p[11]);
+        const ciHex = (p[5] || '').trim();
+        const tac   = (p[9] || '').trim();
+        const sinr  = parseFloat(p[13]);
+        if (!isNaN(rsrp) && rsrp < 0) {
+          cell.ear = ear; cell.pci = pci;
+          cell.ci = parseInt(ciHex, 16);
+          cell.band = parseInt(p[8]?.trim()) || '—';
+          tx('r-rat', 'NB-IoT'); tx('r-ear', ear || '—'); tx('r-pci', pci || '—');
+          tx('r-bnd', cell.band); tx('r-frq', ear ? e2freq(+ear) : '—');
+          tx('r-bw', '200 kHz');
+          tx('ci-id', cell.ci + ' (0x' + cell.ci.toString(16).toUpperCase() + ')');
+          tx('ci-en', '—');
+          if (tac) tx('ci-ta', tac + ' (0x' + parseInt(tac).toString(16).toUpperCase() + ')');
+          cell.rsrp = rsrp; cell.rsrq = rsrq; cell.sinr = isNaN(sinr) ? null : sinr;
+          const srv = document.getElementById('srv-row');
+          if (srv) srv.innerHTML =
+            `<span class="mono">${ciHex ? '0x'+ciHex.toUpperCase() : '—'}</span>` +
+            `<span class="mono">${ear || '—'}</span>` +
+            `<span class="mono">${pci || '—'}</span>` +
+            `<span class="mono" style="color:${sc(rsrp)}">${rsrp} dBm</span>` +
+            `<span class="mono" style="color:${sq(rsrq)}">${rsrq.toFixed(1)} dB</span>` +
+            `<span class="mono">${cell.band}</span><span></span>`;
+          updSig(rsrp, rsrq, cell.sinr);
+          pushHistory(rsrp, rsrq, cell.sinr);
+          if (logActive) addLogEntry();
+          srvDone = true;
+        }
+      } else if (rat === 'GSM') {
+        // p[5]=lac(hex), p[6]=cellId(hex), p[7]=bsic, p[8]=arfcn, p[9]=band, p[10]=rxlev(dBm)
+        const ciHex = (p[6] || '').trim();
+        const lac   = (p[5] || '').trim();
+        const arfcn = (p[8] || '').trim();
+        const rxlev = parseFloat(p[10]);
+        if (!isNaN(rxlev) && rxlev < 0) {
+          cell.ci = parseInt(ciHex, 16);
+          tx('r-rat', 'GSM'); tx('r-ear', arfcn); tx('r-pci', '—');
+          tx('r-bnd', '—');  tx('r-frq', '—');
+          tx('ci-id', cell.ci + ' (0x' + cell.ci.toString(16).toUpperCase() + ')');
+          tx('ci-en', '—');
+          if (lac) tx('ci-ta', lac + ' (0x' + lac.toUpperCase() + ')');
+          const srv = document.getElementById('srv-row');
+          if (srv) srv.innerHTML =
+            `<span class="mono">${ciHex ? '0x'+ciHex.toUpperCase() : '—'}</span>` +
+            `<span class="mono">${arfcn || '—'}</span>` +
+            `<span class="mono">—</span>` +
+            `<span class="mono" style="color:${sc(rxlev)}">${rxlev} dBm</span>` +
+            `<span class="mono">—</span>` +
+            `<span class="mono">—</span><span></span>`;
+          updSig(rxlev, null, null); srvDone = true;
+        }
+      }
+    } else if (kind.startsWith('neighbourcell')) {
+      const rat = (p[1] || '').replace(/"/g, '').trim();
+      if (rat === 'LTE' && p.length >= 6) {
+        // p[2]=earfcn, p[3]=pcid, p[4]=rsrq, p[5]=rsrp
+        const ear  = p[2]?.trim();
+        const pci  = p[3]?.trim();
+        const rsrq = parseFloat(p[4]);
+        const rsrp = parseFloat(p[5]);
+        if (ear && !isNaN(rsrp) && rsrp < 0) nbrs.push({ rat: 'LTE', ear, pci, rsrp, rsrq });
+      } else if (rat === 'GSM' && p.length >= 9) {
+        // p[4]=lac, p[5]=cellId, p[6]=bsic, p[7]=arfcn, p[8]=rxlev
+        const ear  = p[7]?.trim();
+        const pci  = p[6]?.trim();
+        const rsrp = parseFloat(p[8]);
+        if (ear && !isNaN(rsrp)) nbrs.push({ rat: 'GSM', ear, pci, rsrp, rsrq: null });
+      }
+    }
+  }
+  renderNeighbors(nbrs);
+}
+
+let eqBandGsm  = '0x93'; // saved from last AT+QCFG="band" response (EG91-E)
+let g_ubmNbMask = '';   // NB-IoT mask from last AT+UBANDMASK? — must be included in SET command
+function pQCFG(raw) {
+  const m1 = raw.match(/\+QCFG:\s*"nwscanmode",(\d+)/);
+  if (m1) document.querySelectorAll('input[name="rat"]').forEach(r => r.checked = r.value === m1[1].trim());
+  const m2 = raw.match(/\+QCFG:\s*"band",([^,\r\n]+),([^\s,\r\n]+)/);
+  if (m2) {
+    try {
+      eqBandGsm = m2[1].trim();
+      const lteMask = BigInt(m2[2].trim());
+      tx('bm-raw', '0x' + lteMask.toString(16));
+      document.querySelectorAll('.bchk').forEach(cb => {
+        cb.checked = (lteMask >> BigInt(+cb.dataset.bit) & 1n) === 1n;
+      });
+    } catch (_) {}
+  }
+}
+
+function pCOPS(raw) {
+  // Handle "+COPS: 0" (automatic mode, no operator) — modem not registered or still searching
+  if (/\+COPS:\s*0\s*\r?\n/.test(raw) && !raw.includes('"')) {
+    setSt('Not registered — automatic mode', 'warn');
+    return;
+  }
+  const m = raw.match(/\+COPS:\s*\d,\d,"([^"]+)"(?:,(\d+))?/);
+  if (!m) return;
+  const mn = m[1].replace(/[-,]/g, '');
+  const op = opName(mn);
+  tx('op-cur', (op ? op + ' ' : '') + '(' + m[1] + ')');
+  tx('ci-op', op || m[1]); tx('ci-mn', m[1]);
+  cell.op = op || m[1]; cell.mn = mn;
+  // CEREG always shows stat=0 on EG91-E (HAL bug) so use COPS as the authoritative
+  // registration source for both the status bar and the Dashboard Status row.
+  if (m[2] !== undefined) {
+    const _cd = getCurDev();
+    const actMap = (_cd === 'eq91-eu' || _cd === 'm524')
+      ? { 0:'GSM', 2:'UMTS', 7:'LTE Cat 1', 9:'LTE' }
+      : _cd === 'm404'
+      ? { 0:'GSM', 8:'LTE-M', 9:'NB-IoT' }
+      : { 0:'GSM', 2:'UMTS', 7:'LTE-M', 8:'NB-IoT', 9:'LTE' };
+    const rat = actMap[+m[2]] || 'RAT ' + m[2];
+    const label = 'Registered · ' + (op || m[1]) + ' · ' + rat;
+    tx('ci-st', label);   // override the "Not registered" left by pCEREG
+    tx('r-rat', rat);
+    setSt(label, 'ok');
+  }
+  ['310410','311480','310260','26003','26002','26001','26006','26034'].forEach(k => {
+    const el = document.getElementById('o' + k);
+    if (el) el.classList.toggle('on', mn === k || mn === k.replace('-',''));
+  });
+}
+
+function pURAT(raw) {
+  const m = raw.match(/\+URAT:\s*(\S+)/);
+  if (!m) return;
+  document.querySelectorAll('input[name="rat"]').forEach(r => r.checked = r.value === m[1].trim());
+}
+
+function pBM(raw) {
+  // Response: +UBANDMASK: 0,<lte_m_mask>,<nb_iot_mask>
+  // SARA-R510S SET command requires all three params; capture both here.
+  const m = raw.match(/\+UBANDMASK:\s*0,(\d+)(?:,(\d+))?/);
+  if (!m) return;
+  if (m[2]) g_ubmNbMask = m[2]; // store NB-IoT mask for use in SET commands
+  tx('bm-raw', m[1]);
+  try {
+    const mask = BigInt(m[1]);
+    document.querySelectorAll('.bchk').forEach(cb => {
+      cb.checked = (mask >> BigInt(+cb.dataset.bit) & 1n) === 1n;
+    });
+  } catch (_) {}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI updates
+// ─────────────────────────────────────────────────────────────────────────────
+function tx(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
+
+function setSt(txt, type) {
+  const dot = document.getElementById('sdot'), lb = document.getElementById('stxt');
+  if (lb) lb.textContent = txt;
+  if (dot) { dot.className = 'dot' + (type ? ' ' + type : ''); }
+}
+
+function sc(v) { return v >= -80 ? 'var(--green)' : v >= -100 ? 'var(--yellow)' : 'var(--red)'; }
+function sq(v) { return v >= -10 ? 'var(--green)' : v >= -15 ? 'var(--yellow)' : 'var(--red)'; }
+
+function updSig(rsrp, rsrq, sinr) {
+  if (rsrp != null) {
+    tx('v-rsrp', rsrp + ' dBm');
+    const pct = clamp(((rsrp + 140) / 96) * 100, 0, 100);
+    const col = sc(rsrp);
+    setBar('b-rsrp', pct, col);
+    const ql = rsrp >= -80 ? 'Excellent' : rsrp >= -90 ? 'Good' : rsrp >= -100 ? 'Fair' : 'Poor';
+    const qe = document.getElementById('q-rsrp');
+    if (qe) { qe.textContent = 'dBm · ' + ql; qe.style.color = col; }
+  }
+  if (rsrq != null) {
+    tx('v-rsrq', rsrq.toFixed(1) + ' dB');
+    const pct = clamp(((rsrq + 19.5) / 16.5) * 100, 0, 100);
+    const col = sq(rsrq);
+    setBar('b-rsrq', pct, col);
+    const ql = rsrq >= -10 ? 'Excellent' : rsrq >= -15 ? 'Good' : 'Poor';
+    const qe = document.getElementById('q-rsrq');
+    if (qe) { qe.textContent = 'dB · ' + ql; qe.style.color = col; }
+  }
+  if (sinr != null) {
+    tx('v-snr', sinr.toFixed(1) + ' dB');
+    setBar('b-snr', clamp((sinr / 30) * 100, 0, 100), sinr >= 20 ? 'var(--green)' : sinr >= 10 ? 'var(--yellow)' : 'var(--red)');
+  }
+}
+
+function setBar(id, pct, col) {
+  const el = document.getElementById(id);
+  if (el) { el.style.width = pct.toFixed(0) + '%'; el.style.background = col; }
+}
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function pushHistory(rsrp, rsrq, sinr) {
+  const now = new Date().toLocaleTimeString('en', { hour12: false });
+  sigH.l.push(now);
+  sigH.r.push(rsrp);
+  sigH.q.push(rsrq != null ? rsrq * 5 : null);
+  sigH.s.push(sinr != null ? sinr * 3 : null);
+  if (sigH.l.length > 120) { sigH.l.shift(); sigH.r.shift(); sigH.q.shift(); sigH.s.shift(); }
+  tx('hpts', '(' + sigH.l.length + ' pts)');
+  if (hChart) {
+    hChart.data.labels = [...sigH.l];
+    hChart.data.datasets[0].data = [...sigH.r];
+    hChart.data.datasets[1].data = [...sigH.q];
+    hChart.data.datasets[2].data = [...sigH.s];
+    hChart.update('none');
+  }
+  // Feed GPS track if recording is active and position is known
+  if (mapRecording && mapLastPos) mapAddPoint(mapLastPos.lat, mapLastPos.lon, rsrp);
+}
+
+function appendConsole(txt, cls) {
+  const el = document.getElementById('co-out');
+  if (!el) return;
+  const span = document.createElement('span');
+  span.className = cls || 'rx';
+  span.textContent = txt;
+  el.appendChild(span);
+  el.scrollTop = el.scrollHeight;
+  // trim if too large
+  while (el.childNodes.length > 2000) el.removeChild(el.firstChild);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Neighbor cells
+// ─────────────────────────────────────────────────────────────────────────────
+function renderNeighbors(cells) {
+  const c = document.getElementById('nbr-rows'); if (!c) return;
+  if (!cells.length) {
+    const _d = getCurDev();
+    const note = (_d === 'r510s-us' || _d === 'r510s-eu')
+      ? 'No neighbor cells — SARA-R510S reports serving cell only (requires active bearer for network-configured measurements)'
+      : 'No neighbor cells found';
+    c.innerHTML = `<p class="text2 small" style="padding:14px;text-align:center">${note}</p>`;
+    return;
+  }
+  c.innerHTML = cells.map(n =>
+    `<div class="cell-row">` +
+    `<span class="mono">${n.ear}</span>` +
+    `<span class="mono">${n.pci ?? '—'}</span>` +
+    `<span class="mono" style="color:${sc(n.rsrp)}">${n.rsrp} dBm</span>` +
+    `<span class="mono">${n.rsrq != null ? `<span style="color:${sq(n.rsrq)}">${n.rsrq.toFixed(1)} dB</span>` : '—'}</span>` +
+    `<span class="mono">${n.rat === 'LTE' ? e2band(+n.ear) : n.rat ?? '—'}</span>` +
+    (n.rat === 'LTE' ? `<button class="small" style="font-size:11px;padding:2px 8px" onclick="lockTo('${n.ear}','${n.pci}')">Lock</button>` : `<span></span>`) +
+    `<span></span></div>`
+  ).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Operator operations
+// ─────────────────────────────────────────────────────────────────────────────
+function selOp(id) {
+  document.querySelectorAll('.op-row').forEach(r => r.classList.remove('on'));
+  const el = document.getElementById('o' + id); if (el) el.classList.add('on');
+}
+
+async function getCops() { const r = await atCmd('AT+COPS?').catch(() => null); if (r) parseAll(r); }
+
+async function scanOps() {
+  // Deregister first — modem must be idle before AT+COPS=? scan
+  setSt('Deregistering before scan…', 'warn');
+  await atCmd('AT+COPS=2', 15000).catch(() => null);
+  await delay(2000);  // allow modem to finish internal deregistration before scan starts
+  setSt('Scanning networks… (~10 min max)', 'warn');
+  let r;
+  try {
+    r = await atCmd('AT+COPS=?', 660000);
+  } catch (_) { r = null; }
+  // Restore automatic mode; if modem is in error state after scan, do CFUN=1 recovery first
+  let restoreR = await atCmd('AT+COPS=0', 15000).catch(() => null);
+  if (!restoreR || restoreR.includes('ERROR')) {
+    await atCmd('AT+CFUN=1', 10000).catch(() => null);
+    await delay(3000);
+    await atCmd('AT+COPS=0', 15000).catch(() => null);
+  }
+  if (!r || r.includes('TIMEOUT')) {
+    setSt('Scan timeout — try again or use the operator list above', 'err');
+    return;
+  }
+  if (r.includes('ERROR')) {
+    const cme = r.match(/\+CM[ES]\s+ERROR:\s*(\S+)/);
+    setSt('Network scan failed (' + (cme ? cme[0] : 'ERROR') + ') — modem may not be ready', 'err');
+    appendConsole(r.trim(), 'rx');
+    return;
+  }
+  const ms = [...r.matchAll(/\((\d+),"([^"]+)","([^"]*)","([^"]+)",(\d+)\)/g)];
+  // Deduplicate by numeric code; prefer current (stat=2), then LTE (AcT=7), then first seen
+  const best = {};
+  for (const m of ms) {
+    const num = m[4], stat = +m[1], act = +m[5];
+    if (!best[num] || stat === 2 || (act === 7 && +best[num][5] !== 7)) best[num] = m;
+  }
+  if (Object.keys(best).length === 0) {
+    setSt('Scan complete — no networks found', 'warn');
+    return;
+  }
+  const stL = ['Unknown', 'Available', 'Current', 'Forbidden'];
+  const actL = { 0:'GSM', 2:'UMTS', 7:'LTE', 8:'NB-IoT', 9:'LTE' };
+  const div = document.getElementById('op-scan-res');
+  div.innerHTML = '<p class="small text2 bold mb8 mt12" style="text-transform:uppercase;letter-spacing:.05em">Discovered Networks</p>' +
+    Object.values(best).map(m =>
+      `<div class="op-row"><div class="f1"><p style="font-weight:500;margin-bottom:2px">${m[2]}</p>` +
+      `<p class="mono small text2">${m[4]} · ${stL[+m[1]] || m[1]} · ${actL[+m[5]] || 'RAT '+m[5]}</p></div>` +
+      `<button onclick="connOp('${m[4]}','${m[2]}')" class="small">Connect</button></div>`
+    ).join('');
+  setSt('Scan complete — ' + Object.keys(best).length + ' network(s) found', 'ok');
+}
+
+let connOpBusy = false;
+async function connOp(mn, name) {
+  if (connOpBusy) return;
+  connOpBusy = true;
+  openTab('co');
+  setSt('Deregistering…', 'warn');
+  try {
+    await atCmd('AT+COPS=2', 15000).catch(() => null);
+    setSt('Connecting to ' + name + '…', 'warn');
+    // R510S: AcT=7 (LTE-M, u-blox); M404: AcT=8 (LTE-M, BG95); Quectel Cat1: no AcT
+    const _cd2 = getCurDev();
+    const cops1 = _cd2 === 'r510s-us' || _cd2 === 'r510s-eu'
+      ? 'AT+COPS=1,2,"' + mn + '",7'
+      : _cd2 === 'm404'
+      ? 'AT+COPS=1,2,"' + mn + '",8'
+      : 'AT+COPS=1,2,"' + mn + '"';
+    const r = await atCmd(cops1, 120000).catch(() => null);
+    if (!r || r.includes('ERROR')) {
+      setSt('Connection failed — ' + name + ', restoring automatic mode…', 'err');
+      await atCmd('AT+COPS=0', 10000).catch(() => null);
+      return;
+    }
+    // Short settle wait, then a single COPS? to update the status bar immediately.
+    // doRefresh() follows for a full CEREG+CESQ+COPS sweep.
+    await delay(3000);
+    const c = await atCmd('AT+COPS?', 10000).catch(() => null);
+    if (c) parseAll(c);
+    await doRefresh();
+  } finally {
+    connOpBusy = false;
+    // cell.mn is set by pCOPS when a valid +COPS: response is parsed.
+    // If it's still unset after doRefresh, the COPS? response was never parsed
+    // (e.g. timeout before copsQueryDone could fire) — show a safe fallback.
+    if (!cell.mn) setSt('Registered on ' + name + ' — tap Refresh for details', 'ok');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RAT & Band
+// ─────────────────────────────────────────────────────────────────────────────
+async function getRat() {
+  if (['eq91-eu','m404','m524'].includes(getCurDev())) {
+    const r = await atCmd('AT+QCFG="nwscanmode"', 5000).catch(() => null);
+    if (r) pQCFG(r);
+  } else {
+    const r = await atCmd('AT+URAT?').catch(() => null); if (r) parseAll(r);
+  }
+}
+async function setRat() {
+  const s = document.querySelector('input[name="rat"]:checked'); if (!s) return;
+  let r;
+  if (['eq91-eu','m404','m524'].includes(getCurDev())) {
+    r = await atCmd('AT+QCFG="nwscanmode",' + s.value + ',1', 10000).catch(() => null);
+  } else {
+    r = await atCmd('AT+URAT=' + s.value, 10000).catch(() => null);
+  }
+  if (r) appendConsole(r, 'rx');
+}
+async function getBm() {
+  if (['eq91-eu','m404','m524'].includes(getCurDev())) {
+    const r = await atCmd('AT+QCFG="band"', 5000).catch(() => null); if (r) parseAll(r);
+  } else {
+    const r = await atCmd('AT+UBANDMASK?').catch(() => null); if (r) parseAll(r);
+  }
+}
+async function setBm() {
+  let m = 0n;
+  if (['eq91-eu','m404','m524'].includes(getCurDev())) {
+    document.querySelectorAll('.bchk:checked').forEach(cb => { m |= (1n << BigInt(+cb.dataset.bit)); });
+    const r = await atCmd('AT+QCFG="band",' + eqBandGsm + ',0x' + m.toString(16) + ',0x0', 10000).catch(() => null); if (r) appendConsole(r, 'rx');
+  } else {
+    // UBANDMASK is 64-bit; skip bits ≥ 64 (B66/B71) to avoid overflow.
+    // SARA-R510S requires the NB-IoT mask as a third parameter — include if known.
+    document.querySelectorAll('.bchk:checked').forEach(cb => { const bit = +cb.dataset.bit; if (bit < 64) m |= (1n << BigInt(bit)); });
+    const nbSuffix = g_ubmNbMask ? ',' + g_ubmNbMask : '';
+    const r = await atCmd('AT+UBANDMASK=0,' + m.toString() + nbSuffix, 10000).catch(() => null); if (r) appendConsole(r, 'rx');
+  }
+}
+async function allBm() {
+  if (['eq91-eu','m404','m524'].includes(getCurDev())) {
+    await atCmd('AT+QCFG="band",' + eqBandGsm + ',0x0FFFFFFF,0x0', 10000).catch(() => null);
+  } else {
+    // SARA-R510S: mask=0 is invalid ("no bands"). Compute OR of all US bands.
+    // UBANDMASK is 64-bit; bits ≥ 64 (B66 bit65, B71 bit70) overflow — omit them.
+    let m = 0n;
+    document.querySelectorAll('.bchk').forEach(cb => {
+      const bit = +cb.dataset.bit;
+      cb.checked = true;
+      if (bit < 64) m |= (1n << BigInt(bit));
+    });
+    const nbSuffix = g_ubmNbMask ? ',' + g_ubmNbMask : '';
+    const r = await atCmd('AT+UBANDMASK=0,' + m.toString() + nbSuffix, 10000).catch(() => null);
+    if (r) appendConsole(r, 'rx');
+  }
+  await getBm();
+}
+
+const CARRIER_BANDS = {
+  // US
+  att:      [2, 4, 12, 14, 17],
+  vzw:      [2, 4, 5, 13],
+  tmo:      [2, 4, 12, 71],
+  // PL (LTE-M / Cat 1)  — primary IoT bands per operator
+  orange_pl:[3, 8, 20],
+  tmo_pl:   [3, 8, 20],
+  plus_pl:  [3, 8, 20],
+  play_pl:  [3, 8, 20],
+  eu_all:   [1, 3, 7, 8, 20, 28],
+};
+function selectCarrierBands(carrier) {
+  const bits = CARRIER_BANDS[carrier] || [];
+  document.querySelectorAll('.bchk').forEach(cb => {
+    const b = +cb.dataset.bandnum;
+    cb.checked = bits.includes(b);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cell lock
+// ─────────────────────────────────────────────────────────────────────────────
+async function doLock() {
+  const ear = document.getElementById('lk-ear').value, pci = document.getElementById('lk-pci').value;
+  if (!ear || !pci) return;
+  const r = await atCmd('AT+ULOCKCREG=2,' + ear + ',' + pci).catch(() => null);
+  if (r) tx('lock-status', r.includes('OK') ? '✓ Locked' : r.trim());
+}
+async function doUnlock() {
+  const r = await atCmd('AT+ULOCKCREG=0').catch(() => null);
+  if (r) tx('lock-status', r.includes('OK') ? '✓ Unlocked' : '');
+}
+function lockTo(ear, pci) {
+  document.getElementById('lk-ear').value = ear;
+  document.getElementById('lk-pci').value = pci;
+  openTab('cl'); doLock();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Antenna log
+// ─────────────────────────────────────────────────────────────────────────────
+function setAz(v) {
+  document.getElementById('az-sl').value = v;
+  document.getElementById('az-v').textContent = v + '°';
+}
+
+async function logAnt() {
+  const az = +document.getElementById('az-sl').value;
+  const note = document.getElementById('az-note').value || '';
+  let rsrp = cell.rsrp ?? -140, rsrq = cell.rsrq ?? -20;
+  if (conn) {
+    try {
+      const r = await atCmd('AT+CESQ', 5000);
+      pCESQ(r); rsrp = cell.rsrp ?? rsrp; rsrq = cell.rsrq ?? rsrq;
+    } catch (_) {}
+  }
+  ants.push({ az, note, rsrp, rsrq, band: cell.band || '—', ci: cell.ci || '—', t: new Date().toLocaleTimeString() });
+  renderAntLog(); updatePolar();
+}
+
+function renderAntLog() {
+  const b = document.getElementById('ant-log'); if (!b) return;
+  if (!ants.length) { b.innerHTML = '<p class="text2 small" style="text-align:center;padding:14px 0">No measurements yet</p>'; return; }
+  const best = Math.max(...ants.map(a => a.rsrp));
+  b.innerHTML = ants.map(a =>
+    `<div class="log-row" style="grid-template-columns:60px 60px 80px 75px 75px 70px 1fr">` +
+    `<span style="color:${a.rsrp===best?'var(--green)':'inherit'};font-weight:${a.rsrp===best?600:400}">${a.az}°${a.rsrp===best?' ★':''}</span>` +
+    `<span class="text2 mono">${a.band}</span>` +
+    `<span class="text2 mono">${a.ci}</span>` +
+    `<span style="color:${sc(a.rsrp)}">${a.rsrp} dBm</span>` +
+    `<span style="color:${sq(a.rsrq)}">${a.rsrq.toFixed(1)}</span>` +
+    `<span class="text2">${a.t}</span>` +
+    `<span class="text2">${a.note || '—'}</span></div>`
+  ).join('');
+}
+
+function updatePolar() {
+  if (!polChart) return;
+  const dirs = [0, 45, 90, 135, 180, 225, 270, 315];
+  const vs = dirs.map(d => {
+    const nearby = ants.filter(a => Math.abs(((a.az - d + 540) % 360) - 180) <= 22.5);
+    if (!nearby.length) return 0;
+    return Math.max(0, Math.max(...nearby.map(a => a.rsrp)) + 141);
+  });
+  polChart.data.datasets[0].data = vs; polChart.update();
+}
+
+function expAnt() {
+  const csv = 'Azimuth_deg,Band,CellID,RSRP_dBm,RSRQ_dB,Time,Note\n' +
+    ants.map(a => `${a.az},${a.band},${a.ci},${a.rsrp},${a.rsrq.toFixed(1)},${a.t},"${a.note}"`).join('\n');
+  dlCSV(csv, 'antenna_log.csv');
+}
+function clrAnt() {
+  ants = []; renderAntLog();
+  if (polChart) { polChart.data.datasets[0].data = [0,0,0,0,0,0,0,0]; polChart.update(); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Signal log
+// ─────────────────────────────────────────────────────────────────────────────
+function startLog() {
+  logActive = true; logStart = Date.now(); logEntries = [];
+  document.getElementById('log-start-btn').style.display = 'none';
+  document.getElementById('log-stop-btn').style.display = '';
+  logTimer = setInterval(async () => {
+    if (!conn) return;
+    try { const r = await atCmd('AT+CESQ', 5000); pCESQ(r); } catch (_) {}
+    updateLogStats();
+  }, 5000);
+}
+function stopLog() {
+  logActive = false;
+  if (logTimer) { clearInterval(logTimer); logTimer = null; }
+  document.getElementById('log-start-btn').style.display = '';
+  document.getElementById('log-stop-btn').style.display = 'none';
+}
+function addLogEntry() {
+  const sinrVal = cell.sinr != null ? cell.sinr.toFixed(1) : '—';
+  const entry = {
+    t: new Date().toLocaleTimeString(),
+    op: cell.op || cell.mn || '—',
+    band: cell.band || '—',
+    rsrp: cell.rsrp,
+    rsrq: cell.rsrq != null ? cell.rsrq.toFixed(1) : '—',
+    sinr: sinrVal,
+    pci: cell.pci || '—',
+    ci: cell.ci || '—',
+  };
+  logEntries.push(entry);
+  const snrCol = cell.sinr != null
+    ? `<span style="color:${cell.sinr >= 20 ? 'var(--green)' : cell.sinr >= 10 ? 'var(--yellow)' : 'var(--red)'}">${sinrVal}</span>`
+    : `<span class="text2">—</span>`;
+  const row = document.createElement('div');
+  row.className = 'log-row';
+  row.innerHTML =
+    `<span class="text2">${entry.t}</span>` +
+    `<span class="text2">${entry.op}</span>` +
+    `<span class="mono text2">${entry.band}</span>` +
+    `<span style="color:${sc(entry.rsrp)}">${entry.rsrp} dBm</span>` +
+    `<span style="color:${sq(+entry.rsrq)}">${entry.rsrq}</span>` +
+    snrCol +
+    `<span class="text2 mono">${entry.pci}</span>` +
+    `<span class="text2 mono">${entry.ci}</span>`;
+  const cont = document.getElementById('log-rows');
+  if (cont) {
+    if (logEntries.length === 1) cont.innerHTML = '';
+    cont.insertBefore(row, cont.firstChild);
+  }
+  updateLogStats();
+}
+function updateLogStats() {
+  const n = logEntries.length;
+  tx('lg-count', n);
+  if (logStart) {
+    const s = Math.floor((Date.now() - logStart) / 1000);
+    tx('lg-dur', s + 's');
+  }
+  if (n > 0) {
+    const rs = logEntries.map(e => e.rsrp).filter(v => v != null);
+    if (rs.length) {
+      tx('lg-avg-rsrp', (rs.reduce((a, b) => a + b, 0) / rs.length).toFixed(1) + ' dBm');
+      tx('lg-best-rsrp', Math.max(...rs) + ' dBm');
+    }
+  }
+}
+function expLog() {
+  const csv = 'Time,Operator,Band,RSRP_dBm,RSRQ_dB,SINR_dB,PCI,CellID\n' +
+    logEntries.map(e => `${e.t},${e.op},${e.band},${e.rsrp},${e.rsrq},${e.sinr},${e.pci},${e.ci}`).join('\n');
+  dlCSV(csv, 'lte_log.csv');
+}
+function clrLog() {
+  logEntries = [];
+  document.getElementById('log-rows').innerHTML = '<p class="text2 small" style="padding:16px;text-align:center">Log cleared</p>';
+  updateLogStats();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Best-Provider Wizard
+// ─────────────────────────────────────────────────────────────────────────────
+const WZ_OPS_US = [
+  { id: '310410', name: 'AT&T',         chk: 'wz-att' },
+  { id: '311480', name: 'Verizon',      chk: 'wz-vzw' },
+  { id: '310260', name: 'T-Mobile US',  chk: 'wz-tmo' },
+];
+const WZ_OPS_EU = [
+  { id: '26003',  name: 'Orange PL',    chk: 'wz-org' },
+  { id: '26002',  name: 'T-Mobile PL',  chk: 'wz-tpl' },
+  { id: '26001',  name: 'Plus PL',      chk: 'wz-plu' },
+  { id: '26006',  name: 'Play PL',      chk: 'wz-ply' },
+];
+// Only Orange PL operates LTE-M in Poland for B404X (SARA-R510S)
+const WZ_OPS_EU_LTEM = [
+  { id: '26003',  name: 'Orange PL',    chk: 'wz-org-ltem' },
+];
+const WZ_OPS_M404 = [
+  { id: '310410', name: 'AT&T',         chk: 'wz-m404-att' },
+  { id: '311480', name: 'Verizon',      chk: 'wz-m404-vzw' },
+  { id: '310260', name: 'T-Mobile US',  chk: 'wz-m404-tmo' },
+];
+const WZ_OPS_M524 = [
+  { id: '26003',  name: 'Orange PL',    chk: 'wz-m524-org' },
+  { id: '26002',  name: 'T-Mobile PL',  chk: 'wz-m524-tpl' },
+  { id: '26001',  name: 'Plus PL',      chk: 'wz-m524-plu' },
+  { id: '26006',  name: 'Play PL',      chk: 'wz-m524-ply' },
+];
+function getWzOps() {
+  const dev = getCurDev();
+  const map = {
+    'r510s-us': WZ_OPS_US, 'r510s-eu': WZ_OPS_EU_LTEM,
+    'eq91-eu':  WZ_OPS_EU, 'm404': WZ_OPS_M404, 'm524': WZ_OPS_M524,
+  };
+  const ops = map[dev] || WZ_OPS_US;
+  return ops.filter(o => { const el = document.getElementById(o.chk); return el && el.checked; });
+}
+const WZ_SAMPLES = 10;
+const WZ_INTERVAL_MS = 3000;
+const WZ_SETTLE_MS = 25000;
+
+async function runWizard() {
+  if (!conn) { alert('Connect USB first.'); return; }
+  wizardRunning = true; wizardStop = false;
+  document.getElementById('wz-run').style.display  = 'none';
+  document.getElementById('wz-stop').style.display = '';
+  document.getElementById('wz-results').style.display = 'none';
+
+  const ops = getWzOps();
+  if (!ops.length) { alert('Select at least one operator.'); endWizard(); return; }
+
+  renderWizSteps(ops, -1, 'waiting');
+  const results = [];
+
+  for (let i = 0; i < ops.length; i++) {
+    if (wizardStop) break;
+    const op = ops[i];
+    renderWizSteps(ops, i, 'connecting');
+
+    // Connect to operator
+    const cr = await atCmd('AT+COPS=1,2,"' + op.id + '"', 35000).catch(() => null);
+    if (!cr || cr.includes('ERROR')) {
+      results.push({ op, rsrps: [], rsrqs: [], sinrs: [], error: 'Could not connect' });
+      renderWizSteps(ops, i, 'error');
+      continue;
+    }
+
+    // Settle
+    renderWizSteps(ops, i, 'settling');
+    await delay(WZ_SETTLE_MS);
+    if (wizardStop) break;
+
+    // Sample
+    renderWizSteps(ops, i, 'sampling');
+    const rsrps = [], rsrqs = [], sinrs = [];
+    const isQuectelDev = ['eq91-eu','m404','m524'].includes(getCurDev());
+    for (let s = 0; s < WZ_SAMPLES; s++) {
+      if (wizardStop) break;
+      if (isQuectelDev) {
+        const r = await atCmd('AT+QENG="servingcell"', 5000).catch(() => null);
+        if (r) {
+          // Match LTE/eMTC format: ...,"LTE"|"eMTC","FDD",...,rsrp,rsrq,rssi,sinr
+          const m = r.match(/\+QENG:\s*"servingcell","[^"]+","(?:LTE|eMTC)","[^"]+",\d+,\w+,\w+,\d+,\d+,\d+,\d+,\d+,\w+,(-?\d+),(-?\d+),(-?\d+),(-?\d+)/);
+          if (m) {
+            rsrps.push(parseFloat(m[1]));
+            rsrqs.push(parseFloat(m[2]));
+            sinrs.push(parseFloat(m[4]));
+          }
+        }
+      } else {
+        const r = await atCmd('AT+CESQ', 5000).catch(() => null);
+        if (r) {
+          const m = r.match(/\+CESQ:\s*\d+,\d+,\d+,\d+,(\d+),(\d+)/);
+          if (m && +m[2] < 255) {
+            rsrps.push(+m[2] - 141);
+            if (+m[1] < 255) rsrqs.push((+m[1] / 2) - 19.5);
+          }
+        }
+      }
+      updateWizProgress(ops, i, s + 1, WZ_SAMPLES);
+      await delay(WZ_INTERVAL_MS);
+    }
+    results.push({ op, rsrps, rsrqs, sinrs, error: null });
+    renderWizSteps(ops, i, 'done');
+  }
+
+  // Restore auto
+  await atCmd('AT+COPS=0', 10000).catch(() => {});
+  await doRefresh();
+
+  renderWizResults(results);
+  endWizard();
+}
+
+function stopWizard() { wizardStop = true; }
+function endWizard() {
+  wizardRunning = false;
+  document.getElementById('wz-run').style.display  = '';
+  document.getElementById('wz-stop').style.display = 'none';
+}
+
+// SQI scoring: RSRP 40%, RSRQ 30%, SINR 20%, Stability 10%.
+// Weights are redistributed when a metric is unavailable (u-blox: no SINR; GSM: no RSRQ/SINR).
+//   RSRP: -140 dBm = 0%,  -44 dBm = 100%
+//   RSRQ:  -20 dB  = 0%,   -3 dB  = 100%
+//   SINR:   -5 dB  = 0%,  +30 dB  = 100%
+//   Stab: σ > 10 dB = 0%, σ = 0 dB = 100%
+function wizScore(rsrps, rsrqs, sinrs) {
+  if (!rsrps.length) return 0;
+  const rpScore   = clamp((avg(rsrps) + 140) / 96 * 100, 0, 100);
+  const stabScore = clamp(100 - (std(rsrps) / 10) * 100, 0, 100);
+  const rqScore   = rsrqs && rsrqs.length ? clamp((avg(rsrqs) + 20) / 17 * 100, 0, 100) : null;
+  const snScore   = sinrs && sinrs.length ? clamp((avg(sinrs) + 5)  / 35 * 100, 0, 100) : null;
+  if (rqScore != null && snScore != null)
+    return rpScore*0.40 + rqScore*0.30 + snScore*0.20 + stabScore*0.10;
+  if (rqScore != null)
+    return rpScore*0.45 + rqScore*0.35 + stabScore*0.20;
+  if (snScore != null)
+    return rpScore*0.55 + snScore*0.25 + stabScore*0.20;
+  return rpScore*0.75 + stabScore*0.25;
+}
+
+function avg(arr) { return arr.reduce((a, b) => a + b, 0) / arr.length; }
+function std(arr) {
+  const m = avg(arr);
+  return Math.sqrt(arr.map(v => (v - m) ** 2).reduce((a, b) => a + b, 0) / arr.length);
+}
+
+function renderWizResults(results) {
+  const valid = results.filter(r => r.rsrps.length > 0);
+  if (!valid.length) return;
+
+  const scored = results.map(r => ({
+    ...r,
+    score: wizScore(r.rsrps, r.rsrqs, r.sinrs),
+    avgRp: r.rsrps.length ? avg(r.rsrps).toFixed(1) : '—',
+    avgRq: r.rsrqs && r.rsrqs.length ? avg(r.rsrqs).toFixed(1) : '—',
+    avgSn: r.sinrs && r.sinrs.length ? avg(r.sinrs).toFixed(1) : '—',
+    stdRp: r.rsrps.length ? std(r.rsrps).toFixed(1) : '—',
+  }));
+  scored.sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  const container = document.getElementById('wz-score-cards');
+  container.innerHTML = scored.map((r, idx) => `
+    <div class="card mb8" style="${idx===0?'border-color:var(--green)':''}">
+      <div class="flex items-center justify-between mb8">
+        <span style="font-weight:600;font-size:14px">${idx===0?'★ ':''}${r.op.name}</span>
+        <span class="badge ${r.score>=70?'badge-green':r.score>=45?'badge-yellow':'badge-red'}" style="font-size:13px">${r.score.toFixed(0)}/100</span>
+      </div>
+      ${r.error ? `<p class="red small">${r.error}</p>` : `
+      <div class="score-bar"><div class="score-marker" style="left:${r.score.toFixed(0)}%"></div></div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px" class="mt8 small text2">
+        <div>Avg RSRP<br><span class="mono" style="color:${sc(+r.avgRp)}">${r.avgRp} dBm</span></div>
+        <div>Avg RSRQ<br><span class="mono" style="color:${r.avgRq!=='—'?sq(+r.avgRq):'inherit'}">${r.avgRq !== '—' ? r.avgRq+' dB' : '—'}</span></div>
+        <div>Avg SINR<br><span class="mono" style="color:${r.avgSn!=='—'?(+r.avgSn>=20?'var(--green)':(+r.avgSn>=10?'var(--yellow)':'var(--red)')):'inherit'}">${r.avgSn !== '—' ? r.avgSn+' dB' : '—'}</span></div>
+        <div>Std dev<br><span class="mono">${r.stdRp} dB</span></div>
+        <div>Samples<br><span class="mono">${r.rsrps.length}</span></div>
+      </div>`}
+    </div>`
+  ).join('');
+
+  const rec = document.getElementById('wz-recommendation');
+  if (best.rsrps.length) {
+    const rqStr  = best.avgRq !== '—' ? ` · RSRQ ${best.avgRq} dB` : '';
+    const snStr  = best.avgSn !== '—' ? ` · SINR ${best.avgSn} dB` : '';
+    rec.innerHTML = `
+      <p style="font-size:15px;font-weight:600" class="green">✓ Best operator: ${best.op.name}</p>
+      <p class="text2 small mt8">SQI ${best.score.toFixed(0)}/100 · RSRP ${best.avgRp} dBm${rqStr}${snStr} · Stability ±${best.stdRp} dB</p>
+      <p class="text2 small mt8">Connect manually via Operators tab or run <code>AT+COPS=1,2,"${best.op.id}"</code> in Console.</p>`;
+  }
+  document.getElementById('wz-results').style.display = '';
+}
+
+function renderWizSteps(ops, activeIdx, state) {
+  const states = { waiting:'', connecting:'Connecting…', settling:'Settling (25s)…',
+    sampling:'Sampling RSRP/RSRQ…', done:'Done', error:'Failed' };
+  document.getElementById('wz-steps').innerHTML = ops.map((op, i) => {
+    const isDone = i < activeIdx || (i === activeIdx && state === 'done');
+    const isActive = i === activeIdx && state !== 'done';
+    const isFail = i === activeIdx && state === 'error';
+    const cls = isDone ? 'done' : isActive ? 'active' : '';
+    const num = isDone ? '✓' : isFail ? '✗' : (i + 1);
+    const label = i === activeIdx ? (states[state] || '') : (isDone ? 'Completed' : 'Waiting');
+    return `<div class="step">
+      <div class="step-num ${cls}">${num}</div>
+      <div><p style="font-weight:500">${op.name}</p><p class="text2 small">${label}</p>
+      ${i===activeIdx&&state==='sampling'?`<div id="wz-prog" class="bar mt8" style="width:200px"><div class="bar-fill" id="wz-prog-fill" style="background:var(--blue)"></div></div>`:''}
+      </div></div>`;
+  }).join('');
+}
+
+function updateWizProgress(ops, idx, s, total) {
+  const fill = document.getElementById('wz-prog-fill');
+  if (fill) fill.style.width = ((s / total) * 100).toFixed(0) + '%';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Poll
+// ─────────────────────────────────────────────────────────────────────────────
+let pollActive = false, pollTimer = null;
+function togglePoll() {
+  pollActive = !pollActive;
+  const btn = document.getElementById('btn-poll');
+  if (pollActive) {
+    pollTimer = setInterval(() => { if (conn) atCmd('AT+CESQ', 5000).then(r => pCESQ(r)).catch(() => {}); }, 5000);
+    if (btn) btn.innerHTML = '<i class="ti ti-player-pause"></i> Polling';
+  } else {
+    stopPoll();
+    if (btn) btn.innerHTML = '<i class="ti ti-player-play"></i> Poll';
+  }
+}
+function stopPoll() { pollActive = false; if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Refresh
+// ─────────────────────────────────────────────────────────────────────────────
+async function doRefresh() {
+  if (!conn) return;
+  try {
+    let r;
+    r = await atCmd('AT+CEREG?', 5000); parseAll(r);
+    r = await atCmd('AT+CESQ',   5000); parseAll(r);
+    r = await atCmd('AT+COPS?', 12000); parseAll(r);
+    await scanCells();
+  } catch (_) {}
+}
+async function scanCells() {
+  const dev = getCurDev();
+  if (['eq91-eu','m404','m524'].includes(dev)) {
+    // Quectel: QENG returns serving + neighbor cells
+    const r  = await atCmd('AT+QENG="servingcell"', 5000).catch(() => null);
+    if (r)  parseAll(r);
+    const r2 = await atCmd('AT+QENG="neighbourcell"', 10000).catch(() => null);
+    if (r2) parseAll(r2);
+  } else {
+    // SARA-R510S: use AT+UCELLINFO?
+    const r = await atCmd('AT+UCELLINFO?', 25000).catch(() => null);
+    if (r) parseAll(r);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tabs
+// ─────────────────────────────────────────────────────────────────────────────
+function openTab(n) {
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.tp').forEach(p => p.classList.remove('on'));
+  const tp = document.getElementById('tp-' + n); if (tp) tp.classList.add('on');
+  document.querySelectorAll('.tab').forEach(b => {
+    const oc = b.getAttribute('onclick');
+    if (oc && oc.includes("'" + n + "'")) b.classList.add('on');
+  });
+  if (n === 'mp') mapEnsureInit();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Map  (Leaflet + OpenStreetMap + OpenCelliD via local proxy)
+// ─────────────────────────────────────────────────────────────────────────────
+function mapSetStatus(msg) { const el = document.getElementById('map-status'); if (el) el.textContent = msg; }
+
+function mapKey() { return document.getElementById('map-key-input')?.value.trim() || ''; }
+function mapKeySave() { localStorage.setItem(MAP_KEY_LS, mapKey()); }
+function mapKeyLoad() {
+  const saved = localStorage.getItem(MAP_KEY_LS) || '';
+  const el = document.getElementById('map-key-input');
+  if (el && saved) el.value = saved;
+}
+
+function mapEnsureInit() {
+  if (mapObj) return;
+  // Lazy-load Leaflet CSS + JS from CDN on first tab open
+  if (!document.getElementById('leaflet-css')) {
+    const lnk = document.createElement('link');
+    lnk.id = 'leaflet-css'; lnk.rel = 'stylesheet';
+    lnk.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(lnk);
+  }
+  if (window.L) { mapInit(); return; }
+  const scr = document.createElement('script');
+  scr.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  scr.onload = mapInit;
+  scr.onerror = () => mapSetStatus('Leaflet CDN load failed — check internet connection');
+  document.head.appendChild(scr);
+}
+
+function mapInit() {
+  const el = document.getElementById('map-container');
+  if (!el || mapObj) return;
+  mapKeyLoad();  // restore key from localStorage
+  mapObj = L.map(el, { zoomControl: true }).setView([52.2, 20.0], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org">OSM</a> contributors',
+    maxZoom: 19
+  }).addTo(mapObj);
+  mapLayerTowers = L.layerGroup().addTo(mapObj);
+  mapLayerTrack  = L.layerGroup().addTo(mapObj);
+  mapSetStatus('Map ready · click Locate then Load Towers');
+}
+
+// ── Icons ──────────────────────────────────────────────────────────────────────
+function opColor(mcc, mnc) {
+  const k2 = String(mcc) + String(mnc).padStart(2, '0');
+  const k3 = String(mcc) + String(mnc).padStart(3, '0');
+  const m = {
+    '26003':'#FF6B00', '26002':'#E20074', '26001':'#00A651',
+    '26006':'#9B1BD1', '26034':'#ED1D24', '26098':'#1565C0',
+    '26016':'#9E9E9E', '310410':'#00A8E0','311480':'#CD040B',
+    '310260':'#E20074','310004':'#CD040B','310030':'#00A8E0',
+    '310120':'#FFCB05',
+  };
+  return m[k2] || m[k3] || '#f97316';
+}
+function mapIconTower(isServing, isSameEnb, color) {
+  let c, sz, bdr, shd;
+  if (isServing) {
+    c = '#3b82f6'; sz = 16;
+    bdr = '3px solid #fff';
+    shd = '0 0 0 3px rgba(59,130,246,.45),0 0 6px rgba(0,0,0,.7)';
+  } else if (isSameEnb) {
+    c = '#3b82f6'; sz = 14;
+    bdr = '2px dashed #fff';
+    shd = '0 0 0 2px rgba(59,130,246,.3),0 0 5px rgba(0,0,0,.6)';
+  } else {
+    c = color || '#f97316'; sz = 12;
+    bdr = '2px solid rgba(255,255,255,.8)';
+    shd = '0 0 4px rgba(0,0,0,.6)';
+  }
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${c};border:${bdr};box-shadow:${shd}"></div>`,
+    iconSize: [sz, sz], iconAnchor: [sz/2, sz/2]
+  });
+}
+function mapIconMe() {
+  return L.divIcon({
+    className: '',
+    html: '<div style="width:14px;height:14px;border-radius:50%;background:#22c55e;border:3px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.7)"></div>',
+    iconSize: [14, 14], iconAnchor: [7, 7]
+  });
+}
+
+// ── Locate device (GPS preferred, cell fallback) ───────────────────────────────
+async function mapLocate() {
+  if (!mapObj) { mapEnsureInit(); setTimeout(mapLocate, 800); return; }
+  mapSetStatus('Getting location…');
+  try {
+    const pos = await new Promise((res, rej) =>
+      navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, maximumAge: 10000 }));
+    mapLastPos = { lat: pos.coords.latitude, lon: pos.coords.longitude, source: 'gps' };
+    mapSetStatus('GPS position obtained · click Load Towers');
+    mapMoveToPos();
+    mapStartWatch();
+  } catch (_) {
+    // GPS unavailable/denied — fall back to serving cell location
+    await mapCellFallback();
+  }
+}
+
+// ── OpenCelliD API fetch: try direct HTTPS first, proxy second ────────────────
+// Direct works if OpenCelliD sends CORS headers (no proxy needed).
+// Proxy fallback: run tools/start_proxy.bat (or node tools/proxy.js).
+async function mapApiFetch(path, params) {
+  const key = mapKey();
+  if (!key) {
+    mapSetStatus('Enter your OpenCelliD API key in the field below the map');
+    throw new Error('no_key');
+  }
+  const qs = new URLSearchParams({ ...params, format: 'json' }).toString();
+
+  // 1. Try direct HTTPS to opencellid.org
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
+    const r = await fetch('https://opencellid.org' + path + '?' + qs + '&key=' + encodeURIComponent(key),
+                          { signal: ctrl.signal });
+    clearTimeout(t);
+    const d = await r.json();
+    if (d.error && d.error !== 'ok') throw new Error('api:' + d.error);
+    return d;
+  } catch (e) {
+    if (e.message?.startsWith('api:')) throw new Error(e.message.slice(4));
+    // CORS or network error — fall through to proxy
+  }
+
+  // 2. Try local proxy (same paths, key passed as 'k')
+  try {
+    const ctrl2 = new AbortController();
+    const t2 = setTimeout(() => ctrl2.abort(), 5000);
+    const r2 = await fetch(MAP_PROXY + path + '?' + qs + '&k=' + encodeURIComponent(key),
+                           { signal: ctrl2.signal });
+    clearTimeout(t2);
+    const d2 = await r2.json();
+    if (d2.error && d2.error !== 'ok') throw new Error('api:' + d2.error);
+    return d2;
+  } catch (e2) {
+    if (e2.message?.startsWith('api:')) throw new Error(e2.message.slice(4));
+    throw new Error('unreachable');
+  }
+}
+
+async function mapCellFallback() {
+  if (!cell.ci) { mapSetStatus('No GPS and no serving cell — connect device first'); return; }
+  mapSetStatus('GPS unavailable — looking up serving cell position…');
+  const tac = parseInt(document.getElementById('ci-ta')?.textContent?.match(/\(0x([0-9A-F]+)\)/i)?.[1] || '0', 16);
+  const mcc = cell.mn?.substring(0, 3) || '260';
+  const mnc = cell.mn?.substring(3)    || '03';
+  try {
+    const d = await mapApiFetch('/cell/get', { mcc, mnc, lac: tac, cellid: cell.ci });
+    if (d.lat && d.lon) {
+      mapLastPos = { lat: +d.lat, lon: +d.lon, source: 'cell' };
+      mapSetStatus('Position from cell tower · click Load Towers');
+      mapMoveToPos();
+    } else {
+      mapSetStatus('Cell not found in OpenCelliD database');
+    }
+  } catch (e) {
+    if (e.message === 'no_key') return;
+    if (e.message === 'unreachable')
+      mapSetStatus('OpenCelliD unreachable — run tools\\start_proxy.bat then try again');
+    else
+      mapSetStatus('OpenCelliD error: ' + e.message);
+  }
+}
+
+function mapMoveToPos() {
+  if (!mapLastPos || !mapObj) return;
+  mapObj.setView([mapLastPos.lat, mapLastPos.lon], 13);
+  if (mapMarkerMe) mapMarkerMe.remove();
+  mapMarkerMe = L.marker([mapLastPos.lat, mapLastPos.lon], { icon: mapIconMe(), zIndexOffset: 1000 })
+    .addTo(mapObj)
+    .bindPopup(`<b>Device</b><br>${mapLastPos.source === 'gps' ? 'GPS' : 'Cell tower estimate'}`);
+}
+
+function mapStartWatch() {
+  if (mapWatchId !== null) return;
+  mapWatchId = navigator.geolocation.watchPosition(pos => {
+    mapLastPos = { lat: pos.coords.latitude, lon: pos.coords.longitude, source: 'gps' };
+    if (mapMarkerMe) mapMarkerMe.setLatLng([mapLastPos.lat, mapLastPos.lon]);
+  }, null, { enableHighAccuracy: true, maximumAge: 5000 });
+}
+
+// ── Operator filter toggle ─────────────────────────────────────────────────────
+function mapToggleFilter() {
+  mapFilterOp = !mapFilterOp;
+  const btn = document.getElementById('btn-op-filter');
+  if (btn) {
+    btn.style.color = mapFilterOp ? 'var(--accent)' : '';
+    btn.innerHTML = `<i class="ti ti-filter"></i> ${mapFilterOp ? 'My Operator' : 'All Operators'}`;
+  }
+  mapLoadTowers();
+}
+
+// ── Load towers ────────────────────────────────────────────────────────────────
+async function mapLoadTowers() {
+  if (!mapObj) { mapEnsureInit(); setTimeout(mapLoadTowers, 800); return; }
+  if (!mapLastPos) { await mapLocate(); if (!mapLastPos) return; }
+  mapSetStatus('Loading towers…');
+  mapLayerTowers.clearLayers();
+  const { lat, lon } = mapLastPos;
+  const dLat = MAP_RADIUS_KM / 111.32;
+  const dLon = MAP_RADIUS_KM / (111.32 * Math.cos(lat * Math.PI / 180));
+  const bbox = `${(lat - dLat).toFixed(6)},${(lon - dLon).toFixed(6)},${(lat + dLat).toFixed(6)},${(lon + dLon).toFixed(6)}`;
+  const mcc = cell.mn?.substring(0, 3) || '';
+  const mnc = cell.mn?.substring(3)    || '';
+  const params = { BBOX: bbox, limit: 300, radio: 'LTE' };
+  if (mapFilterOp && mcc) params.mcc = mcc;
+  if (mapFilterOp && mnc) params.mnc = mnc;
+  const servEnb = cell.ci ? (parseInt(cell.ci) >> 8) : -1;
+  try {
+    const data = await mapApiFetch('/cell/getInArea', params);
+    const towers = data.cells || [];
+    towers.forEach(t => {
+      const isServing  = String(t.cellid) === String(cell.ci);
+      const isSameEnb  = !isServing && servEnb >= 0 && mcc &&
+                         String(t.mcc) === mcc && (parseInt(t.cellid) >> 8) === servEnb;
+      const color      = opColor(t.mcc, t.mnc);
+      const marker = L.marker([+t.lat, +t.lon], {
+        icon: mapIconTower(isServing, isSameEnb, color),
+        zIndexOffset: isServing ? 500 : (isSameEnb ? 200 : 0)
+      }).addTo(mapLayerTowers);
+      const rssiStr = t.averageSignalStrength ? t.averageSignalStrength + ' dBm avg' : '';
+      const tMn = String(t.mcc) + String(t.mnc).padStart(2, '0');
+      const tOp = opName(tMn) || opName(String(t.mcc) + String(t.mnc).padStart(3, '0')) || null;
+      marker.bindPopup(
+        `<b>Cell ${t.cellid}</b>${isServing ? ' ★ serving' : (isSameEnb ? ' ≈ serving tower (same site)' : '')}<br>` +
+        (tOp ? `<span style="color:${color}">${tOp}</span><br>` : '') +
+        `MCC/MNC: ${t.mcc}/${t.mnc}<br>` +
+        `TAC/LAC: ${t.lac}<br>` +
+        `Samples: ${t.samples || '?'}${rssiStr ? '<br>' + rssiStr : ''}<br>` +
+        `<span style="color:#888;font-size:11px">${(+t.lat).toFixed(5)}, ${(+t.lon).toFixed(5)}</span>`
+      );
+    });
+    const servCount = towers.filter(t => String(t.cellid) === String(cell.ci)).length;
+    const enbCount  = towers.filter(t => {
+      if (String(t.cellid) === String(cell.ci)) return false;
+      return servEnb >= 0 && mcc && String(t.mcc) === mcc && (parseInt(t.cellid) >> 8) === servEnb;
+    }).length;
+    mapSetStatus(
+      `${towers.length} LTE tower${towers.length !== 1 ? 's' : ''} · ` +
+      (servCount  ? 'serving cell ★ (blue)' :
+       enbCount   ? `serving tower ≈ (same site, ${enbCount} cell${enbCount > 1 ? 's' : ''})` :
+                    'serving cell not in OpenCelliD DB')
+    );
+  } catch (e) {
+    if (e.message === 'no_key') return;
+    if (e.message === 'unreachable')
+      mapSetStatus('OpenCelliD unreachable — run tools\\start_proxy.bat then try again');
+    else
+      mapSetStatus('OpenCelliD error: ' + e.message);
+  }
+}
+
+// ── GPS track recording ────────────────────────────────────────────────────────
+function mapToggleTrack() {
+  mapRecording = !mapRecording;
+  const btn = document.getElementById('btn-track');
+  if (btn) btn.style.color = mapRecording ? 'var(--green)' : '';
+  if (mapRecording) {
+    mapTrackPts = [];
+    mapLayerTrack.clearLayers();
+    mapSetStatus('Track recording started');
+    if (!mapWatchId) mapStartWatch();
+  } else {
+    mapSetStatus('Track recording stopped · ' + mapTrackPts.length + ' points');
+  }
+}
+
+function mapAddPoint(lat, lon, rsrp) {
+  if (!mapObj || !mapRecording || !mapLayerTrack) return;
+  mapTrackPts.push({ lat, lon, rsrp });
+  const n = mapTrackPts.length;
+  if (n < 2) return;
+  const a = mapTrackPts[n - 2], b = mapTrackPts[n - 1];
+  const col = rsrp >= -85 ? '#22c55e' : rsrp >= -95 ? '#eab308' : '#ef4444';
+  L.polyline([[a.lat, a.lon], [b.lat, b.lon]], { color: col, weight: 4, opacity: 0.85 })
+    .addTo(mapLayerTrack);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function dlCSV(csv, name) {
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = name; a.click();
+}
+
+function opName(mn) {
+  return {
+    '310410':'AT&T',       '311480':'Verizon',      '310260':'T-Mobile US',
+    '310004':'Verizon',    '310030':'AT&T',          '310120':'Sprint',
+    '26003' :'Orange PL',
+    '26002' :'T-Mobile PL','26001' :'Plus PL',       '26006' :'Play PL',
+    '26034' :'Virgin PL',  '26098' :'Polsat Cyfrowy','26016' :'Aero2 PL',
+  }[mn] || null;
+}
+
+function e2band(e) {
+  // EU bands (checked first where ranges overlap with US)
+  if (e >= 0     && e <= 599)   return 'B1 (2100)';      // EU
+  if (e >= 1200  && e <= 1949)  return 'B3 (1800)';      // EU/PL
+  if (e >= 2750  && e <= 3449)  return 'B7 (2600)';      // EU/PL
+  if (e >= 3450  && e <= 3799)  return 'B8 (900)';       // EU/PL
+  if (e >= 6150  && e <= 6449)  return 'B20 (800DD)';    // EU/PL
+  // US bands
+  if (e >= 600   && e <= 1199)  return 'B2 (1900)';
+  if (e >= 1950  && e <= 2399)  return 'B4 (AWS)';
+  if (e >= 2400  && e <= 2649)  return 'B5 (850)';
+  if (e >= 5010  && e <= 5179)  return 'B12 (700L)';
+  if (e >= 5180  && e <= 5279)  return 'B13 (700U)';
+  if (e >= 5280  && e <= 5379)  return 'B14 (758)';
+  if (e >= 5730  && e <= 5849)  return 'B17 (700)';
+  if (e >= 8040  && e <= 8689)  return 'B25 (1900+)';
+  if (e >= 8690  && e <= 9039)  return 'B26 (850+)';
+  if (e >= 9210  && e <= 9659)  return 'B28 (700A)';     // EU/Intl too
+  if (e >= 66436 && e <= 67335) return 'B66 (AWS+)';
+  if (e >= 68586 && e <= 68935) return 'B71 (600)';
+  return '? (EARFCN ' + e + ')';
+}
+
+function e2freq(e) {
+  // EU bands
+  if (e >= 0     && e <= 599)   return ((2110   + e           * 0.1)).toFixed(1) + ' MHz'; // B1
+  if (e >= 1200  && e <= 1949)  return ((1805   + (e - 1200)  * 0.1)).toFixed(1) + ' MHz'; // B3
+  if (e >= 2750  && e <= 3449)  return ((2620   + (e - 2750)  * 0.1)).toFixed(1) + ' MHz'; // B7
+  if (e >= 3450  && e <= 3799)  return ((925    + (e - 3450)  * 0.1)).toFixed(1) + ' MHz'; // B8
+  if (e >= 6150  && e <= 6449)  return ((791    + (e - 6150)  * 0.1)).toFixed(1) + ' MHz'; // B20
+  // US bands
+  if (e >= 600   && e <= 1199)  return ((1930   + (e - 600)   * 0.1)).toFixed(1) + ' MHz'; // B2
+  if (e >= 1950  && e <= 2399)  return ((2110   + (e - 1950)  * 0.1)).toFixed(1) + ' MHz'; // B4
+  if (e >= 2400  && e <= 2649)  return ((869    + (e - 2400)  * 0.1)).toFixed(1) + ' MHz'; // B5
+  if (e >= 5010  && e <= 5179)  return ((729    + (e - 5010)  * 0.1)).toFixed(1) + ' MHz'; // B12
+  if (e >= 5180  && e <= 5279)  return ((746    + (e - 5180)  * 0.1)).toFixed(1) + ' MHz'; // B13
+  if (e >= 5730  && e <= 5849)  return ((704    + (e - 5730)  * 0.1)).toFixed(1) + ' MHz'; // B17
+  if (e >= 9210  && e <= 9659)  return ((758    + (e - 9210)  * 0.1)).toFixed(1) + ' MHz'; // B28
+  if (e >= 66436 && e <= 67335) return ((2110   + (e - 66436) * 0.1)).toFixed(1) + ' MHz'; // B66
+  if (e >= 68586 && e <= 68935) return ((617    + (e - 68586) * 0.1)).toFixed(1) + ' MHz'; // B71
+  return '—';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Band grid
+// ─────────────────────────────────────────────────────────────────────────────
+const BANDS_US = [
+  { b:2,  bit:1,  d:'1900 MHz PCS',    o:'ATT TMO' },
+  { b:4,  bit:3,  d:'1700/2100 AWS',   o:'ATT TMO VZW' },
+  { b:5,  bit:4,  d:'850 MHz CLR',     o:'VZW' },
+  { b:12, bit:11, d:'700 MHz Low ABC', o:'ATT TMO' },
+  { b:13, bit:12, d:'700 MHz Upper C', o:'VZW' },
+  { b:14, bit:13, d:'758 MHz FirstNet',o:'ATT' },
+  { b:17, bit:16, d:'700 MHz Low BC',  o:'ATT' },
+  { b:25, bit:24, d:'1900 MHz PCS+',   o:'Sprint' },
+  { b:26, bit:25, d:'850 MHz ext',     o:'Sprint' },
+  { b:28, bit:27, d:'700 MHz APT',     o:'Intl/EU' },
+  { b:66, bit:65, d:'AWS 1-3',         o:'ATT TMO VZW' },
+  { b:71, bit:70, d:'600 MHz',         o:'TMO' },
+];
+const BANDS_EU = [
+  { b:1,  bit:0,  d:'2100 MHz UMTS',   o:'PL: wszyscy (Cat1)' },
+  { b:3,  bit:2,  d:'1800 MHz DCS',    o:'PL: ORG TMO PLU PLY' },
+  { b:7,  bit:6,  d:'2600 MHz LTE',    o:'PL: ORG TMO PLU PLY (Cat1)' },
+  { b:8,  bit:7,  d:'900 MHz E-GSM',   o:'PL: ORG TMO PLU PLY' },
+  { b:20, bit:19, d:'800 MHz DD',      o:'PL: ORG TMO PLU PLY' },
+  { b:28, bit:27, d:'700 MHz APT',     o:'EU (wybrane sieci)' },
+];
+
+function renderBandGrid() {
+  const bg = document.getElementById('band-grid');
+  if (!bg) return;
+  const isEU = getCurDev() !== 'r510s-us';
+  const bands = isEU ? BANDS_EU : BANDS_US;
+  bg.innerHTML = bands.map(b =>
+    `<label class="band-card"><input type="checkbox" class="bchk" data-bit="${b.bit}" data-bandnum="${b.b}">` +
+    `<div><p style="font-size:13px;font-weight:600">B${b.b}</p>` +
+    `<p class="small text2">${b.d}</p>` +
+    `<p class="small text2 mono">${b.o}</p></div></label>`
+  ).join('');
+}
+renderBandGrid();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart init
+// ─────────────────────────────────────────────────────────────────────────────
+function initCharts() {
+  const hc = document.getElementById('hc');
+  if (hc && window.Chart) {
+    hChart = new Chart(hc.getContext('2d'), {
+      type: 'line',
+      data: { labels: [], datasets: [
+        { label: 'RSRP', data: [], borderColor: '#3b82f6', borderWidth: 1.5, pointRadius: 2, tension: 0.35, fill: false },
+        { label: 'RSRQ×5', data: [], borderColor: '#22c55e', borderWidth: 1.5, pointRadius: 2, tension: 0.35, fill: false, borderDash: [3, 2], spanGaps: true },
+        { label: 'SINR×3', data: [], borderColor: '#f97316', borderWidth: 1.5, pointRadius: 2, tension: 0.35, fill: false, borderDash: [1, 3], spanGaps: true },
+      ]},
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: { ticks: { font: { size: 10 }, color: '#666' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+        }
+      }
+    });
+  }
+  const pc = document.getElementById('pc');
+  if (pc && window.Chart) {
+    polChart = new Chart(pc.getContext('2d'), {
+      type: 'radar',
+      data: {
+        labels: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
+        datasets: [{
+          data: [0,0,0,0,0,0,0,0],
+          borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.10)',
+          borderWidth: 1.5, pointRadius: 4, pointBackgroundColor: '#3b82f6',
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { r: {
+          ticks: { display: false },
+          grid: { color: 'rgba(255,255,255,0.1)' },
+          angleLines: { color: 'rgba(255,255,255,0.1)' },
+        }}
+      }
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Device / Region selector
+// ─────────────────────────────────────────────────────────────────────────────
+function getCurDev() {
+  return (document.getElementById('dev-sel') || {}).value || 'r510s-us';
+}
+
+function onDevChange() {
+  const dev       = getCurDev();
+  const isR510s   = dev === 'r510s-us' || dev === 'r510s-eu';
+  const isR510sEu = dev === 'r510s-eu';
+  const isB524    = dev === 'eq91-eu';
+  const isM404    = dev === 'm404';
+  const isM524    = dev === 'm524';
+  const isQuectel = isB524 || isM404 || isM524;   // all use AT+QENG
+  const isEU      = dev === 'r510s-eu' || isB524 || isM524;
+  const hasSinr   = isQuectel;                    // R510S HISTORIC always 0
+
+  // Header
+  const devLabels = {
+    'r510s-us': 'Particle B404X', 'r510s-eu': 'Particle B404X',
+    'eq91-eu' : 'Particle B524',
+    'm404'    : 'Particle M404',  'm524'    : 'Particle M524',
+  };
+  const subLabels = {
+    'r510s-us': 'u-blox SARA-R510S · LTE-M/NB-IoT · US',
+    'r510s-eu': 'u-blox SARA-R510S · LTE-M · Poland / EU',
+    'eq91-eu' : 'Quectel EG91-E · LTE Cat 1 + 2G/3G · Europe / PL',
+    'm404'    : 'Quectel BG95-M5 · LTE-M/NB-IoT + 2G · Global',
+    'm524'    : 'Quectel EG91-EX · LTE Cat 1 + 2G/3G · EMEAA',
+  };
+  tx('hdr-dev', devLabels[dev] || 'Particle');
+  tx('hdr-sub', (subLabels[dev] || '') + ' · Web Serial · Chrome/Edge only');
+
+  // Operators tab
+  show('op-us',       dev === 'r510s-us');
+  show('op-eu',       isB524 || isM524);
+  show('op-eu-ltem',  isR510sEu);
+  show('op-global',   isM404);
+
+  // RAT tab
+  const ratR510s = document.getElementById('rat-r510s');
+  const ratR524  = document.getElementById('rat-r524');
+  const ratM404  = document.getElementById('rat-m404');
+  if (ratR510s) ratR510s.style.display = isR510s ? 'flex' : 'none';
+  if (ratR524)  ratR524.style.display  = (isB524 || isM524) ? 'flex' : 'none';
+  if (ratM404)  ratM404.style.display  = isM404 ? 'flex' : 'none';
+
+  // Band presets
+  show('bm-presets-us', !isEU); show('bm-presets-eu', isEU);
+
+  // Wizard operators
+  show('wz-ops-us',       dev === 'r510s-us');
+  show('wz-ops-eu',       isB524);
+  show('wz-ops-eu-ltem',  isR510sEu);
+  show('wz-ops-m404',     isM404);
+  show('wz-ops-m524',     isM524);
+
+  // Cell environment command label
+  const cellEnvCmd = isQuectel ? 'QENG' : 'UCELLINFO';
+  tx('btn-ucged-dash', cellEnvCmd);
+  tx('btn-ucged-co',   cellEnvCmd);
+  tx('ucged-tab-label', 'Cell Environment (AT+' + (isQuectel ? 'QENG' : 'UCELLINFO?') + ')');
+
+  // SINR — not available on SARA-R510S (always 0 in HISTORIC mode)
+  show('metric-snr',  hasSinr);
+  show('legend-sinr', hasSinr);
+  const logTab = document.getElementById('tp-lg');
+  if (logTab) logTab.classList.toggle('hide-sinr', !hasSinr);
+
+  // Band grid
+  renderBandGrid();
+}
+
+function show(id, visible) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = visible ? '' : 'none';
+}
+
+// Run once on load to apply initial state
+onDevChange();
+setTimeout(initCharts, 80);
+</script>
+</body>
+</html>
