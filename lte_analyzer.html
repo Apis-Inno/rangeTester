@@ -660,6 +660,7 @@
 <div id="tp-mp" class="tp">
   <div class="flex items-center gap8 mb8" style="flex-wrap:wrap">
     <button class="small" onclick="mapLocate()"><i class="ti ti-current-location"></i> Locate</button>
+    <button class="small" id="btn-compass" onclick="mapToggleCompass()" title="Enable compass"><i class="ti ti-compass"></i> Compass</button>
     <button class="small" onclick="mapLoadTowers()"><i class="ti ti-tower-broadcast"></i> Load Towers</button>
     <button class="small" id="btn-op-filter" onclick="mapToggleFilter()" title="Toggle: show all operators or only the connected one"><i class="ti ti-filter"></i> All Operators</button>
     <button class="small" id="btn-track" onclick="mapToggleTrack()"><i class="ti ti-route"></i> Record Track</button>
@@ -765,6 +766,7 @@ let mapRecording   = false; // track recording active
 let mapTrackPts    = [];    // [{ lat, lon, rsrp }]
 let mapFilterOp    = false; // true = show only serving operator's towers
 let mapWatchId     = null;  // navigator.geolocation.watchPosition handle
+let mapHeading     = null;  // compass azimuth in degrees (0=N, 90=E) or null
 
 // ── Wizard state ──────────────────────────────────────────────────────────────
 let wizardRunning = false, wizardStop = false;
@@ -808,6 +810,10 @@ async function doConn() {
     // Only send COPS=0 when mode=1 — avoids clearing a working registration unnecessarily
     // (sending COPS=0 deregisters the modem and invalidates the HAL CGI cache, causing
     // cellular_global_identity() to fail and emitCeregFromSdk() to return stat=0).
+    // Quectel: set RAT search order LTE → UMTS → GSM so modem prefers LTE at boot
+    if (['eq91-eu','m404','m524'].includes(getCurDev())) {
+      await atCmd('AT+QCFG="nwscanseq","030201"', 5000).catch(() => null);  // 03=LTE 02=UMTS 01=GSM
+    }
     const copsChk = await atCmd('AT+COPS?', 12000).catch(() => null);
     const copsModeIdx = copsChk ? copsChk.indexOf('+COPS:') : -1;
     const copsMode = copsModeIdx >= 0 ? parseInt(copsChk.slice(copsModeIdx + 6).trim()) : -1;
@@ -890,6 +896,9 @@ async function connectBle() {
     const initR = await atCmd('$$INIT$$', 20000).catch(() => null);
     setSt(initR && initR.includes('INIT_OK') ? 'BLE Connected' : 'BLE Connected (init timeout)',
           initR && initR.includes('INIT_OK') ? 'ok' : 'warn');
+    if (['eq91-eu','m404','m524'].includes(getCurDev())) {
+      await atCmd('AT+QCFG="nwscanseq","030201"', 5000).catch(() => null);
+    }
     const copsChk = await atCmd('AT+COPS?', 12000).catch(() => null);
     const copsModeIdx = copsChk ? copsChk.indexOf('+COPS:') : -1;
     const copsMode = copsModeIdx >= 0 ? parseInt(copsChk.slice(copsModeIdx + 6).trim()) : -1;
@@ -962,7 +971,7 @@ function checkPending() {
   const ucellinfoDone = !_isQuectel && /\+UCELLINFO:[^\r\n]+\r?\n/.test(buf);
   // +CME ERROR / +CMS ERROR are modem error codes — they terminate a command like ERROR does,
   // but start with '+' so they don't match the plain ERROR pattern above.
-  const cmeError = /\+CM[ES]\s+ERROR/.test(buf);
+  const cmeError = /\+CM[ES]\s+ERROR:\s*\S/.test(buf);
   if (/\r\n(OK|ERROR[^\r\n]*)\r?\n?/.test(buf) || /\n(OK|ERROR)\n/.test(buf) ||
       buf.includes('TIMEOUT') || buf.includes('INIT_OK') || copsDone || copsQueryDone || qengDone || qcfgDone || ucellinfoDone || cmeError) {
     clearTimeout(pTmr);
@@ -994,8 +1003,12 @@ async function qrUcged() {
     if (['eq91-eu','m404','m524'].includes(getCurDev())) {
       const r  = await atCmd('AT+QENG="servingcell"', 5000);
       parseAll(r);
-      const r2 = await atCmd('AT+QENG="neighbourcell"', 10000);
-      parseAll(r2);
+      if (r && r.includes('"SEARCH"')) {
+        appendConsole('Modem searching for network — neighbourcell skipped\n', 'rx');
+      } else {
+        const r2 = await atCmd('AT+QENG="neighbourcell"', 10000);
+        parseAll(r2);
+      }
     } else {
       // SARA-R510S: AT+UCGED not supported; use AT+UCELLINFO?
       const r = await atCmd('AT+UCELLINFO?', 25000);
@@ -1255,7 +1268,7 @@ function pQENG(raw) {
           tx('r-bw', bw ? bw + ' MHz' : '—');
           tx('ci-id', cell.ci + ' (0x' + cell.ci.toString(16).toUpperCase() + ')');
           tx('ci-en', Math.floor(cell.ci / 256) + ' / ' + (cell.ci % 256));
-          if (tac) tx('ci-ta', tac + ' (0x' + parseInt(tac).toString(16).toUpperCase() + ')');
+          if (tac) tx('ci-ta', '0x' + tac.toUpperCase() + ' (' + parseInt(tac, 16) + ')');
           cell.rsrp = rsrp; cell.rsrq = rsrq; cell.sinr = isNaN(sinr) ? null : sinr;
           const srv = document.getElementById('srv-row');
           if (srv) srv.innerHTML =
@@ -1289,7 +1302,7 @@ function pQENG(raw) {
           tx('r-bw', '200 kHz');
           tx('ci-id', cell.ci + ' (0x' + cell.ci.toString(16).toUpperCase() + ')');
           tx('ci-en', '—');
-          if (tac) tx('ci-ta', tac + ' (0x' + parseInt(tac).toString(16).toUpperCase() + ')');
+          if (tac) tx('ci-ta', '0x' + tac.toUpperCase() + ' (' + parseInt(tac, 16) + ')');
           cell.rsrp = rsrp; cell.rsrq = rsrq; cell.sinr = isNaN(sinr) ? null : sinr;
           const srv = document.getElementById('srv-row');
           if (srv) srv.innerHTML =
@@ -1534,16 +1547,43 @@ function selOp(id) {
 
 async function getCops() { const r = await atCmd('AT+COPS?').catch(() => null); if (r) parseAll(r); }
 
+let scanOpsBusy = false;
 async function scanOps() {
-  // Deregister first — modem must be idle before AT+COPS=? scan
+  if (scanOpsBusy || !conn) return;
+  scanOpsBusy = true;
+  const btn = document.querySelector('[onclick="scanOps()"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> Scanning…'; }
+  try {
+    await _scanOpsInner();
+  } finally {
+    scanOpsBusy = false;
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-search"></i> Scan (~2 min)'; }
+  }
+}
+async function _scanOpsInner() {
+  const dev = getCurDev();
+  const isQuectel = ['eq91-eu','m404','m524'].includes(dev);
+  const isEG91    = dev === 'eq91-eu' || dev === 'm524';
+
+  // EG91-E/EX: AT+COPS=? always fails (CME ERROR:0 after COPS=2).
+  // Skip the scan — user selects operators manually from the pre-defined list.
+  if (isEG91) {
+    setSt('EG91-E/EX: network scan not supported — select operators from the list above', 'warn');
+    await getCops();
+    return;
+  }
+
+  // All other modems: must deregister before AT+COPS=? scan.
   setSt('Deregistering before scan…', 'warn');
   await atCmd('AT+COPS=2', 15000).catch(() => null);
-  await delay(2000);  // allow modem to finish internal deregistration before scan starts
+  await delay(2000);
+
   setSt('Scanning networks… (~10 min max)', 'warn');
   let r;
   try {
     r = await atCmd('AT+COPS=?', 660000);
   } catch (_) { r = null; }
+
   // Restore automatic mode; if modem is in error state after scan, do CFUN=1 recovery first
   let restoreR = await atCmd('AT+COPS=0', 15000).catch(() => null);
   if (!restoreR || restoreR.includes('ERROR')) {
@@ -1551,6 +1591,20 @@ async function scanOps() {
     await delay(3000);
     await atCmd('AT+COPS=0', 15000).catch(() => null);
   }
+  // Flush stale URCs (delayed +CME ERROR from scan) before polling re-registration
+  await delay(1500); buf = '';
+
+  // Quectel BG95 (M404): wait for re-registration via AT+COPS? (any RAT).
+  if (isQuectel) {
+    setSt('Waiting for re-registration…', 'warn');
+    for (let w = 0; w < 90; w++) {
+      await delay(1000);
+      const qr = await atCmd('AT+COPS?', 5000).catch(() => null);
+      if (qr && /\+COPS:\s*\d+,\d+,"/.test(qr)) break;
+    }
+    await delay(500); buf = '';  // flush any trailing URCs after registration
+  }
+
   if (!r || r.includes('TIMEOUT')) {
     setSt('Scan timeout — try again or use the operator list above', 'err');
     return;
@@ -2214,11 +2268,55 @@ function mapIconTower(isServing, isSameEnb, color) {
   });
 }
 function mapIconMe() {
+  const cone = mapHeading !== null
+    ? `<div style="position:absolute;left:50%;top:50%;width:0;height:0;
+         border-left:9px solid transparent;border-right:9px solid transparent;
+         border-bottom:26px solid rgba(34,197,94,0.35);
+         transform:translate(-50%,-100%) rotate(${mapHeading}deg);
+         transform-origin:50% 100%;"></div>`
+    : '';
   return L.divIcon({
     className: '',
-    html: '<div style="width:14px;height:14px;border-radius:50%;background:#22c55e;border:3px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.7)"></div>',
-    iconSize: [14, 14], iconAnchor: [7, 7]
+    html: `<div style="position:relative;width:48px;height:48px">
+      ${cone}
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+        width:14px;height:14px;border-radius:50%;background:#22c55e;
+        border:3px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.7)"></div>
+    </div>`,
+    iconSize: [48, 48], iconAnchor: [24, 24]
   });
+}
+
+function mapOnHeading(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number') {
+    h = e.webkitCompassHeading;                    // iOS — absolute, 0=N clockwise
+  } else if (e.absolute && e.alpha !== null) {
+    h = (360 - e.alpha) % 360;                     // Android absolute
+  }
+  if (h === null) return;
+  mapHeading = h;
+  if (mapMarkerMe && mapLastPos) {
+    mapMarkerMe.setIcon(mapIconMe());
+  }
+}
+
+async function mapStartCompass() {
+  if (typeof DeviceOrientationEvent === 'undefined') return;
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS 13+ — requires user gesture
+    try {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res !== 'granted') return;
+    } catch (_) { return; }
+  }
+  window.addEventListener('deviceorientation', mapOnHeading, true);
+}
+
+function mapStopCompass() {
+  window.removeEventListener('deviceorientation', mapOnHeading, true);
+  mapHeading = null;
+  if (mapMarkerMe && mapLastPos) mapMarkerMe.setIcon(mapIconMe());
 }
 
 // ── Locate device (GPS preferred, cell fallback) ───────────────────────────────
@@ -2319,6 +2417,20 @@ function mapStartWatch() {
     mapLastPos = { lat: pos.coords.latitude, lon: pos.coords.longitude, source: 'gps' };
     if (mapMarkerMe) mapMarkerMe.setLatLng([mapLastPos.lat, mapLastPos.lon]);
   }, null, { enableHighAccuracy: true, maximumAge: 5000 });
+  mapStartCompass();  // also start compass when GPS tracking begins
+}
+
+async function mapToggleCompass() {
+  const btn = document.getElementById('btn-compass');
+  if (window._compassOn) {
+    mapStopCompass();
+    window._compassOn = false;
+    if (btn) { btn.style.color = ''; btn.title = 'Enable compass'; }
+  } else {
+    await mapStartCompass();
+    window._compassOn = true;
+    if (btn) { btn.style.color = 'var(--green)'; btn.title = 'Disable compass'; }
+  }
 }
 
 // ── Operator filter toggle ─────────────────────────────────────────────────────
