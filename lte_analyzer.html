@@ -686,6 +686,12 @@
     <button class="small" onclick="mapLocate()"><i class="ti ti-current-location"></i> Locate</button>
     <button class="small" id="btn-compass" onclick="mapToggleCompass()" title="Enable compass"><i class="ti ti-compass"></i> Compass</button>
     <button class="small" onclick="mapLoadTowers()"><i class="ti ti-tower-broadcast"></i> Load Towers</button>
+    <select id="map-radius" title="Search radius" style="padding:4px 6px;font-size:11px;height:28px" onchange="mapRadiusKm=parseFloat(this.value)">
+      <option value="1">1 km</option>
+      <option value="2">2 km</option>
+      <option value="5">5 km</option>
+      <option value="10">10 km</option>
+    </select>
     <button class="small" id="btn-op-filter" onclick="mapToggleFilter()" title="Toggle: show all operators or only the connected one"><i class="ti ti-filter"></i> All Operators</button>
     <button class="small" id="btn-track" onclick="mapToggleTrack()"><i class="ti ti-route"></i> Record Track</button>
     <button class="small" onclick="openCellMapper()" title="Open CellMapper centred on current location"><i class="ti ti-external-link"></i> CellMapper</button>
@@ -780,7 +786,7 @@ let ants = [];
 
 // ── Map state ─────────────────────────────────────────────────────────────────
 const MAP_PROXY    = 'http://127.0.0.1:3741';
-const MAP_RADIUS_KM = 0.9;  // half-side of tower search box in km → 1.8×1.8 km = 3.24 km² (limit: 4 km²)
+let mapRadiusKm = 1;  // half-side of tower search box in km; controlled by #map-radius select
 const MAP_KEY_LS   = 'lte_analyzer_ocid_key';  // localStorage key name
 let mapObj         = null;  // Leaflet map instance
 let mapLayerTowers = null;  // L.layerGroup for tower markers
@@ -2550,12 +2556,13 @@ async function mapLoadTowers() {
   mapSetStatus('Loading towers…');
   mapLayerTowers.clearLayers();
   const { lat, lon } = mapLastPos;
-  const dLat = MAP_RADIUS_KM / 111.32;
-  const dLon = MAP_RADIUS_KM / (111.32 * Math.cos(lat * Math.PI / 180));
+  const dLat = mapRadiusKm / 111.32;
+  const dLon = mapRadiusKm / (111.32 * Math.cos(lat * Math.PI / 180));
   const bbox = `${(lat - dLat).toFixed(6)},${(lon - dLon).toFixed(6)},${(lat + dLat).toFixed(6)},${(lon + dLon).toFixed(6)}`;
   const mcc = cell.mn?.substring(0, 3) || '';
   const mnc = cell.mn?.substring(3)    || '';
-  const params = { BBOX: bbox, limit: 300, radio: 'LTE' };
+  const towerLimit = mapRadiusKm <= 1 ? 300 : mapRadiusKm <= 2 ? 500 : mapRadiusKm <= 5 ? 1000 : 2000;
+  const params = { BBOX: bbox, limit: towerLimit, radio: 'LTE' };
   if (mapFilterOp && mcc) params.mcc = mcc;
   if (mapFilterOp && mnc) params.mnc = mnc;
   const servEnb = cell.ci ? (parseInt(cell.ci) >> 8) : -1;
