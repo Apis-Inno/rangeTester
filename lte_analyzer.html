@@ -1906,9 +1906,14 @@ function startLog() {
   logTimer = setInterval(async () => {
     if (!conn) return;
     try {
-      if (['eq91-eu','m404','m524'].includes(getCurDev())) {
+      const dev = getCurDev();
+      if (['eq91-eu','m404','m524'].includes(dev)) {
         // Quectel: pCESQ skips addLogEntry — use QENG which has full RSRP/RSRQ/SINR
         const r = await atCmd('AT+QENG="servingcell"', 5000);
+        parseAll(r);
+      } else if (dev === 'r510s-us' || dev === 'r510s-eu') {
+        // u-blox SARA-R510S: pCESQ skips addLogEntry — use UCELLINFO which has full RSRP/RSRQ/SINR
+        const r = await atCmd('AT+UCELLINFO?', 10000);
         parseAll(r);
       } else {
         const r = await atCmd('AT+CESQ', 5000); pCESQ(r);
