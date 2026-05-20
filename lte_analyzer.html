@@ -536,10 +536,13 @@
       <div class="card-title">Azimuth Input</div>
       <div class="flex justify-between items-center mb8">
         <span class="text2">Direction</span>
-        <span id="az-v" class="mono" style="font-size:20px;font-weight:600">0°</span>
+        <div class="flex items-center gap8">
+          <span id="az-compass-badge" style="display:none;font-size:10px;padding:2px 7px;border-radius:4px;background:rgba(34,197,94,.15);color:var(--green)"><i class="ti ti-compass"></i> Live</span>
+          <span id="az-v" class="mono" style="font-size:20px;font-weight:600">0°</span>
+        </div>
       </div>
       <input type="range" min="0" max="359" value="0" id="az-sl"
-             oninput="document.getElementById('az-v').textContent=this.value+'°'" step="5">
+             oninput="document.getElementById('az-v').textContent=this.value+'°';antCompassOn=false;antCompassUI()" step="1">
       <div class="az-compass mt8"><span>N 0°</span><span>E 90°</span><span>S 180°</span><span>W 270°</span><span>N 360°</span></div>
       <div class="flex gap8 mb8 mt12">
         <button onclick="setAz(0)">N</button><button onclick="setAz(45)">NE</button>
@@ -548,7 +551,10 @@
         <button onclick="setAz(270)">W</button><button onclick="setAz(315)">NW</button>
       </div>
       <input type="text" id="az-note" placeholder="Note (location, height, …)" style="width:100%;margin-bottom:8px">
-      <button onclick="logAnt()" class="primary" style="width:100%"><i class="ti ti-plus"></i> Log Signal at This Azimuth</button>
+      <div class="flex gap8">
+        <button id="btn-ant-compass" onclick="antToggleCompass()" title="Use phone compass for live azimuth" style="flex:0 0 auto"><i class="ti ti-compass"></i> Compass</button>
+        <button onclick="logAnt()" class="primary" style="flex:1"><i class="ti ti-plus"></i> Log Signal at This Azimuth</button>
+      </div>
     </div>
     <div class="card">
       <div class="card-title">Signal vs Direction</div>
@@ -664,6 +670,7 @@
     <button class="small" onclick="mapLoadTowers()"><i class="ti ti-tower-broadcast"></i> Load Towers</button>
     <button class="small" id="btn-op-filter" onclick="mapToggleFilter()" title="Toggle: show all operators or only the connected one"><i class="ti ti-filter"></i> All Operators</button>
     <button class="small" id="btn-track" onclick="mapToggleTrack()"><i class="ti ti-route"></i> Record Track</button>
+    <button class="small" onclick="openCellMapper()" title="Open CellMapper centred on current location"><i class="ti ti-external-link"></i> CellMapper</button>
     <span id="map-status" class="small text2" style="margin-left:8px">Open Map tab to initialise</span>
   </div>
   <div id="map-container" style="height:460px;border-radius:6px;overflow:hidden;background:#111"></div>
@@ -1280,6 +1287,8 @@ function pQENG(raw) {
           cell.ear = ear; cell.pci = pci;
           cell.band = band || e2band(+ear);
           cell.ci = parseInt(ciHex, 16);
+          const qMcc = (p[4] || '').trim(), qMnc = (p[5] || '').trim();
+          if (/^\d+$/.test(qMcc) && /^\d+$/.test(qMnc)) cell.mn = qMcc + qMnc.padStart(2, '0');
           const tac = (p[12] || '').trim();
           const sinr = parseFloat(p[16]);
           const bwMap = {0:'1.4',1:'3',2:'5',3:'10',4:'15',5:'20'};
@@ -1318,6 +1327,8 @@ function pQENG(raw) {
         if (!isNaN(rsrp) && rsrp < 0) {
           cell.ear = ear; cell.pci = pci;
           cell.ci = parseInt(ciHex, 16);
+          const qMcc = (p[3] || '').trim(), qMnc = (p[4] || '').trim();
+          if (/^\d+$/.test(qMcc) && /^\d+$/.test(qMnc)) cell.mn = qMcc + qMnc.padStart(2, '0');
           cell.band = parseInt(p[8]?.trim()) || '—';
           tx('r-rat', 'NB-IoT'); tx('r-ear', ear || '—'); tx('r-pci', pci || '—');
           tx('r-bnd', cell.band); tx('r-frq', ear ? e2freq(+ear) : '—');
@@ -1347,6 +1358,8 @@ function pQENG(raw) {
         const rxlev = parseFloat(p[10]);
         if (!isNaN(rxlev) && rxlev < 0) {
           cell.ci = parseInt(ciHex, 16);
+          const qMcc = (p[3] || '').trim(), qMnc = (p[4] || '').trim();
+          if (/^\d+$/.test(qMcc) && /^\d+$/.test(qMnc)) cell.mn = qMcc + qMnc.padStart(2, '0');
           tx('r-rat', 'GSM'); tx('r-ear', arfcn); tx('r-pci', '—');
           tx('r-bnd', '—');  tx('r-frq', '—');
           tx('ci-id', cell.ci + ' (0x' + cell.ci.toString(16).toUpperCase() + ')');
@@ -1360,7 +1373,11 @@ function pQENG(raw) {
             `<span class="mono" style="color:${sc(rxlev)}">${rxlev} dBm</span>` +
             `<span class="mono">—</span>` +
             `<span class="mono">—</span><span></span>`;
-          updSig(rxlev, null, null); srvDone = true;
+          cell.rsrp = rxlev; cell.rsrq = null; cell.sinr = null;
+          updSig(rxlev, null, null);
+          pushHistory(rxlev, null, null);
+          if (logActive) addLogEntry();
+          srvDone = true;
         }
       }
     } else if (kind.startsWith('neighbourcell')) {
@@ -1870,7 +1887,15 @@ function startLog() {
   document.getElementById('log-stop-btn').style.display = '';
   logTimer = setInterval(async () => {
     if (!conn) return;
-    try { const r = await atCmd('AT+CESQ', 5000); pCESQ(r); } catch (_) {}
+    try {
+      if (['eq91-eu','m404','m524'].includes(getCurDev())) {
+        // Quectel: pCESQ skips addLogEntry — use QENG which has full RSRP/RSRQ/SINR
+        const r = await atCmd('AT+QENG="servingcell"', 5000);
+        parseAll(r);
+      } else {
+        const r = await atCmd('AT+CESQ', 5000); pCESQ(r);
+      }
+    } catch (_) {}
     updateLogStats();
   }, 5000);
 }
@@ -2315,6 +2340,8 @@ function mapIconMe() {
   });
 }
 
+let antCompassOn = false;
+
 function mapOnHeading(e) {
   let h = null;
   if (typeof e.webkitCompassHeading === 'number') {
@@ -2324,8 +2351,33 @@ function mapOnHeading(e) {
   }
   if (h === null) return;
   mapHeading = h;
-  if (mapMarkerMe && mapLastPos) {
-    mapMarkerMe.setIcon(mapIconMe());
+  if (mapMarkerMe && mapLastPos) mapMarkerMe.setIcon(mapIconMe());
+  // Mirror heading to Antenna tab when its compass is active
+  if (antCompassOn) {
+    const az = Math.round(h) % 360;
+    const sl = document.getElementById('az-sl');
+    const av = document.getElementById('az-v');
+    if (sl) sl.value = az;
+    if (av) av.textContent = az + '°';
+  }
+}
+
+function antCompassUI() {
+  const btn   = document.getElementById('btn-ant-compass');
+  const badge = document.getElementById('az-compass-badge');
+  if (btn)   { btn.style.color = antCompassOn ? 'var(--green)' : ''; }
+  if (badge) { badge.style.display = antCompassOn ? '' : 'none'; }
+}
+
+async function antToggleCompass() {
+  if (antCompassOn) {
+    antCompassOn = false;
+    antCompassUI();
+    if (!window._compassOn) mapStopCompass();  // stop sensor if Map also not using it
+  } else {
+    await mapStartCompass();  // requests permission, registers deviceorientation handler
+    antCompassOn = true;
+    antCompassUI();
   }
 }
 
@@ -2345,6 +2397,7 @@ function mapStopCompass() {
   window.removeEventListener('deviceorientation', mapOnHeading, true);
   mapHeading = null;
   if (mapMarkerMe && mapLastPos) mapMarkerMe.setIcon(mapIconMe());
+  antCompassOn = false; antCompassUI();
 }
 
 // ── Locate device (GPS preferred, cell fallback) ───────────────────────────────
@@ -2503,13 +2556,22 @@ async function mapLoadTowers() {
       const rssiStr = t.averageSignalStrength ? t.averageSignalStrength + ' dBm avg' : '';
       const tMn = String(t.mcc) + String(t.mnc).padStart(2, '0');
       const tOp = opName(tMn) || opName(String(t.mcc) + String(t.mnc).padStart(3, '0')) || null;
+      const tRat = document.getElementById('r-rat')?.textContent?.toLowerCase() || '';
+      const tType = tRat.includes('gsm') ? 'GSM' : tRat.includes('nb') ? 'NB-IoT' : tRat.includes('lte-m') ? 'LTE-M' : 'LTE';
+      const cmType = tType === 'GSM' ? 'GSM' : tType === 'NB-IoT' ? 'NB-IoT' : 'LTE';
+      const cmMnc = parseInt(t.mnc, 10);  // integer — CellMapper rejects "03"
+      const cmUrl = `https://www.cellmapper.net/map?MCC=${t.mcc}&MNC=${cmMnc}&type=${cmType}`
+        + `&latitude=${(+t.lat).toFixed(6)}&longitude=${(+t.lon).toFixed(6)}&zoom=16`
+        + `&showTowers=true&showIcons=true&showTowerLabels=true&clusterEnabled=true&tilesEnabled=true`
+        + `&showOrphans=false&DateFilterType=Last&showBand=0&showSectorColours=true&mapType=roadmap`;
       marker.bindPopup(
         `<b>Cell ${t.cellid}</b>${isServing ? ' ★ serving' : (isSameEnb ? ' ≈ serving tower (same site)' : '')}<br>` +
         (tOp ? `<span style="color:${color}">${tOp}</span><br>` : '') +
         `MCC/MNC: ${t.mcc}/${t.mnc}<br>` +
         `TAC/LAC: ${t.lac}<br>` +
         `Samples: ${t.samples || '?'}${rssiStr ? '<br>' + rssiStr : ''}<br>` +
-        `<span style="color:#888;font-size:11px">${(+t.lat).toFixed(5)}, ${(+t.lon).toFixed(5)}</span>`
+        `<span style="color:#888;font-size:11px">${(+t.lat).toFixed(5)}, ${(+t.lon).toFixed(5)}</span><br>` +
+        `<a href="${cmUrl}" target="_blank" rel="noopener" style="font-size:11px;color:#60a5fa">Open in CellMapper ↗</a>`
       );
     });
     const servCount = towers.filter(t => String(t.cellid) === String(cell.ci)).length;
@@ -2530,6 +2592,24 @@ async function mapLoadTowers() {
     else
       mapSetStatus('OpenCelliD error: ' + e.message);
   }
+}
+
+// ── CellMapper link ───────────────────────────────────────────────────────────
+function openCellMapper() {
+  const mn  = cell.mn || '';
+  if (!/^\d{5,6}$/.test(mn)) { mapSetStatus('No operator info — wait for next poll cycle'); return; }
+  const mcc = mn.substring(0, 3);
+  const mnc = parseInt(mn.substring(3), 10);  // integer — CellMapper rejects "03"
+  const pos = mapLastPos;
+  if (!pos) { mapSetStatus('Locate device first'); return; }
+  const ratText = (document.getElementById('r-rat')?.textContent || '').toLowerCase();
+  // CellMapper valid types: GSM, UMTS, LTE, NR — NB-IoT and LTE-M map to LTE
+  const type = ratText.includes('gsm') ? 'GSM' : ratText.includes('umts') ? 'UMTS' : ratText.includes('nr') ? 'NR' : 'LTE';
+  const url = `https://www.cellmapper.net/map?MCC=${mcc}&MNC=${mnc}&type=${type}`
+    + `&latitude=${pos.lat.toFixed(6)}&longitude=${pos.lon.toFixed(6)}&zoom=14`
+    + `&showTowers=true&showIcons=true&showTowerLabels=true&clusterEnabled=true&tilesEnabled=true`
+    + `&showOrphans=false&DateFilterType=Last&showBand=0&showSectorColours=true&mapType=roadmap`;
+  window.open(url, '_blank', 'noopener');
 }
 
 // ── GPS track recording ────────────────────────────────────────────────────────
