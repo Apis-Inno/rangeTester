@@ -817,10 +817,22 @@ async function doConn() {
     const copsChk = await atCmd('AT+COPS?', 12000).catch(() => null);
     const copsModeIdx = copsChk ? copsChk.indexOf('+COPS:') : -1;
     const copsMode = copsModeIdx >= 0 ? parseInt(copsChk.slice(copsModeIdx + 6).trim()) : -1;
-    if (copsMode === 1) {
-      setSt('Resetting to automatic mode…', 'warn');
+    const copsAct  = copsChk ? parseInt((copsChk.match(/\+COPS:[^,]+,[^,]+,"[^"]*",(\d+)/) || [])[1]) : -1;
+    const _isEG91conn = (getCurDev() === 'eq91-eu' || getCurDev() === 'm524');
+    // For EG91-E/EX: force LTE re-registration when modem is stuck in manual mode or on GSM.
+    if (copsMode === 1 || (_isEG91conn && copsAct !== 7 && copsAct !== -1)) {
+      setSt('Forcing LTE registration…', 'warn');
       await atCmd('AT+COPS=0', 10000).catch(() => null);
-      await delay(6000);  // allow modem to register and emit CEREG URC (updates HAL CGI cache)
+      if (_isEG91conn) {
+        // Poll up to 30 s for LTE (AcT=7) — EG91 needs more time than the 6 s generic wait
+        for (let i = 0; i < 30; i++) {
+          await delay(1000);
+          const qr = await atCmd('AT+COPS?', 5000).catch(() => null);
+          if (qr && /\+COPS:[^,]+,[^,]+,"[^"]*",7/.test(qr)) break;
+        }
+      } else {
+        await delay(6000);
+      }
     }
     await doRefresh();
   } catch (e) {
@@ -902,10 +914,20 @@ async function connectBle() {
     const copsChk = await atCmd('AT+COPS?', 12000).catch(() => null);
     const copsModeIdx = copsChk ? copsChk.indexOf('+COPS:') : -1;
     const copsMode = copsModeIdx >= 0 ? parseInt(copsChk.slice(copsModeIdx + 6).trim()) : -1;
-    if (copsMode === 1) {
-      setSt('Resetting to automatic mode…', 'warn');
+    const copsAct  = copsChk ? parseInt((copsChk.match(/\+COPS:[^,]+,[^,]+,"[^"]*",(\d+)/) || [])[1]) : -1;
+    const _isEG91conn = (getCurDev() === 'eq91-eu' || getCurDev() === 'm524');
+    if (copsMode === 1 || (_isEG91conn && copsAct !== 7 && copsAct !== -1)) {
+      setSt('Forcing LTE registration…', 'warn');
       await atCmd('AT+COPS=0', 10000).catch(() => null);
-      await delay(6000);
+      if (_isEG91conn) {
+        for (let i = 0; i < 30; i++) {
+          await delay(1000);
+          const qr = await atCmd('AT+COPS?', 5000).catch(() => null);
+          if (qr && /\+COPS:[^,]+,[^,]+,"[^"]*",7/.test(qr)) break;
+        }
+      } else {
+        await delay(6000);
+      }
     }
     await doRefresh();
   } catch (e) {
@@ -1557,7 +1579,11 @@ async function scanOps() {
     await _scanOpsInner();
   } finally {
     scanOpsBusy = false;
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-search"></i> Scan (~2 min)'; }
+    if (btn) {
+      btn.disabled = false;
+      const _eg91 = getCurDev() === 'eq91-eu' || getCurDev() === 'm524';
+      btn.innerHTML = _eg91 ? '<i class="ti ti-refresh"></i> Refresh' : '<i class="ti ti-search"></i> Scan (~2 min)';
+    }
   }
 }
 async function _scanOpsInner() {
@@ -1647,12 +1673,14 @@ async function connOp(mn, name) {
   try {
     await atCmd('AT+COPS=2', 15000).catch(() => null);
     setSt('Connecting to ' + name + '…', 'warn');
-    // R510S: AcT=7 (LTE-M, u-blox); M404: AcT=8 (LTE-M, BG95); Quectel Cat1: no AcT
+    // R510S: AcT=7 (LTE-M, u-blox); M404: AcT=8 (LTE-M, BG95); EG91: AcT=7 (LTE Cat 1)
     const _cd2 = getCurDev();
     const cops1 = _cd2 === 'r510s-us' || _cd2 === 'r510s-eu'
       ? 'AT+COPS=1,2,"' + mn + '",7'
       : _cd2 === 'm404'
       ? 'AT+COPS=1,2,"' + mn + '",8'
+      : (_cd2 === 'eq91-eu' || _cd2 === 'm524')
+      ? 'AT+COPS=1,2,"' + mn + '",7'
       : 'AT+COPS=1,2,"' + mn + '"';
     const r = await atCmd(cops1, 120000).catch(() => null);
     if (!r || r.includes('ERROR')) {
@@ -2754,6 +2782,16 @@ function onDevChange() {
 
   // Band grid
   renderBandGrid();
+
+  // Scan button: EG91-E/EX doesn't support AT+COPS=? — show "Refresh" instead of "Scan"
+  const scanBtn = document.querySelector('[onclick="scanOps()"]');
+  if (scanBtn) {
+    const isEG91 = dev === 'eq91-eu' || dev === 'm524';
+    scanBtn.innerHTML = isEG91
+      ? '<i class="ti ti-refresh"></i> Refresh'
+      : '<i class="ti ti-search"></i> Scan (~2 min)';
+    scanBtn.title = isEG91 ? 'Network scan not supported on EG91-E/EX — refreshes current operator' : '';
+  }
 }
 
 function show(id, visible) {
