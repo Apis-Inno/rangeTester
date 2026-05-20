@@ -158,9 +158,8 @@
   /* ── Mobile responsive ── */
   @media (max-width:640px) {
     #app { padding:10px 8px; }
-    .tab-lbl { display:none; }
-    .tab { padding:8px 10px; }
-    .tabs { -webkit-overflow-scrolling:touch; }
+    .tabs { flex-wrap:wrap; overflow-x:visible; }
+    .tab  { padding:6px 10px; font-size:11.5px; }
     .grid2 { grid-template-columns:1fr; }
     .grid3,.grid4 { grid-template-columns:1fr 1fr; }
     .metric .mval { font-size:18px; }
