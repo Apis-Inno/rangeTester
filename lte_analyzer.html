@@ -54,7 +54,8 @@
   input[type=range] { accent-color:var(--blue); width:100%; cursor:pointer; }
 
   /* ── Tabs ── */
-  .tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:16px; overflow-x:auto; }
+  .tabs { display:flex; flex-wrap:nowrap; gap:0; border-bottom:1px solid var(--border); margin-bottom:16px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .tabs::-webkit-scrollbar { display:none; }
   .tab  { background:transparent; border:none; border-bottom:2px solid transparent; color:var(--text2); padding:8px 14px; border-radius:0; gap:6px; font-size:12.5px; }
   .tab.on  { color:var(--text); border-bottom-color:var(--blue); font-weight:500; }
   .tab:hover:not(.on) { color:var(--text); }
@@ -154,6 +155,22 @@
   .red    { color:var(--red); }
   .blue   { color:var(--blue); }
 
+  /* ── Mobile responsive ── */
+  @media (max-width:640px) {
+    #app { padding:10px 8px; }
+    .tab-lbl { display:none; }
+    .tab { padding:8px 10px; }
+    .tabs { -webkit-overflow-scrolling:touch; }
+    .grid2 { grid-template-columns:1fr; }
+    .grid3,.grid4 { grid-template-columns:1fr 1fr; }
+    .metric .mval { font-size:18px; }
+    .card:has(.cell-hdr),.card:has(.log-hdr) { overflow-x:auto; }
+    .cell-hdr,.cell-row { min-width:460px; }
+    .log-hdr,.log-row   { min-width:460px; }
+    .hdr-title h1 { font-size:13px; }
+    .hdr-title p  { font-size:10px; }
+  }
+
   /* ── Login screen ── */
   #login-screen { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:9999; }
   #login-box { display:flex; flex-direction:column; align-items:center; gap:20px; text-align:center; width:280px; }
@@ -218,15 +235,15 @@
 
 <!-- ══ TABS ════════════════════════════════════════════════════════════════ -->
 <div class="tabs">
-  <button class="tab on" onclick="openTab('db')"><i class="ti ti-dashboard"></i> Dashboard</button>
-  <button class="tab"    onclick="openTab('cl')"><i class="ti ti-tower-broadcast"></i> Cells</button>
-  <button class="tab"    onclick="openTab('op')"><i class="ti ti-building-broadcast-tower"></i> Operators</button>
-  <button class="tab"    onclick="openTab('rb')"><i class="ti ti-wave-square"></i> RAT &amp; Bands</button>
-  <button class="tab"    onclick="openTab('an')"><i class="ti ti-compass"></i> Antenna</button>
-  <button class="tab"    onclick="openTab('wz')"><i class="ti ti-clipboard-check"></i> Best-Provider Test</button>
-  <button class="tab"    onclick="openTab('lg')"><i class="ti ti-table"></i> Log</button>
-  <button class="tab"    onclick="openTab('mp')"><i class="ti ti-map-2"></i> Map</button>
-  <button class="tab"    onclick="openTab('co')"><i class="ti ti-terminal-2"></i> Console</button>
+  <button class="tab on" onclick="openTab('db')"><i class="ti ti-dashboard"></i><span class="tab-lbl"> Dashboard</span></button>
+  <button class="tab"    onclick="openTab('cl')"><i class="ti ti-tower-broadcast"></i><span class="tab-lbl"> Cells</span></button>
+  <button class="tab"    onclick="openTab('op')"><i class="ti ti-building-broadcast-tower"></i><span class="tab-lbl"> Operators</span></button>
+  <button class="tab"    onclick="openTab('rb')"><i class="ti ti-wave-square"></i><span class="tab-lbl"> RAT &amp; Bands</span></button>
+  <button class="tab"    onclick="openTab('an')"><i class="ti ti-compass"></i><span class="tab-lbl"> Antenna</span></button>
+  <button class="tab"    onclick="openTab('wz')"><i class="ti ti-clipboard-check"></i><span class="tab-lbl"> Best-Provider Test</span></button>
+  <button class="tab"    onclick="openTab('lg')"><i class="ti ti-table"></i><span class="tab-lbl"> Log</span></button>
+  <button class="tab"    onclick="openTab('mp')"><i class="ti ti-map-2"></i><span class="tab-lbl"> Map</span></button>
+  <button class="tab"    onclick="openTab('co')"><i class="ti ti-terminal-2"></i><span class="tab-lbl"> Console</span></button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
@@ -654,9 +671,11 @@
     <div><span class="text2">Avg RSRP: </span><span id="lg-avg-rsrp" class="mono">—</span></div>
     <div><span class="text2">Best RSRP: </span><span id="lg-best-rsrp" class="mono">—</span></div>
   </div>
-  <div class="log-hdr"><span>TIME</span><span>OP</span><span>BAND</span><span>RSRP</span><span>RSRQ</span><span id="log-sinr-col">SINR</span><span>PCI</span><span>CELL</span></div>
-  <div id="log-rows" style="max-height:380px;overflow-y:auto">
-    <p class="text2 small" style="padding:16px;text-align:center">Start logging to record samples</p>
+  <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+    <div class="log-hdr"><span>TIME</span><span>OP</span><span>BAND</span><span>RSRP</span><span>RSRQ</span><span id="log-sinr-col">SINR</span><span>PCI</span><span>CELL</span></div>
+    <div id="log-rows" style="max-height:380px;overflow-y:auto">
+      <p class="text2 small" style="padding:16px;text-align:center">Start logging to record samples</p>
+    </div>
   </div>
 </div>
 
