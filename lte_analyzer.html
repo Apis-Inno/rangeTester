@@ -686,12 +686,6 @@
     <button class="small" onclick="mapLocate()"><i class="ti ti-current-location"></i> Locate</button>
     <button class="small" id="btn-compass" onclick="mapToggleCompass()" title="Enable compass"><i class="ti ti-compass"></i> Compass</button>
     <button class="small" onclick="mapLoadTowers()"><i class="ti ti-tower-broadcast"></i> Load Towers</button>
-    <select id="map-radius" title="Search radius" style="padding:4px 6px;font-size:11px;height:28px" onchange="mapRadiusKm=parseFloat(this.value)">
-      <option value="1">1 km</option>
-      <option value="2">2 km</option>
-      <option value="5">5 km</option>
-      <option value="10">10 km</option>
-    </select>
     <button class="small" id="btn-op-filter" onclick="mapToggleFilter()" title="Toggle: show all operators or only the connected one"><i class="ti ti-filter"></i> All Operators</button>
     <button class="small" id="btn-track" onclick="mapToggleTrack()"><i class="ti ti-route"></i> Record Track</button>
     <button class="small" onclick="openCellMapper()" title="Open CellMapper centred on current location"><i class="ti ti-external-link"></i> CellMapper</button>
@@ -786,7 +780,7 @@ let ants = [];
 
 // ── Map state ─────────────────────────────────────────────────────────────────
 const MAP_PROXY    = 'http://127.0.0.1:3741';
-let mapRadiusKm = 1;  // half-side of tower search box in km; controlled by #map-radius select
+const MAP_RADIUS_KM = 1;  // half-side of tower search box in km (OpenCelliD API limit ~1 km)
 const MAP_KEY_LS   = 'lte_analyzer_ocid_key';  // localStorage key name
 let mapObj         = null;  // Leaflet map instance
 let mapLayerTowers = null;  // L.layerGroup for tower markers
@@ -2556,13 +2550,12 @@ async function mapLoadTowers() {
   mapSetStatus('Loading towers…');
   mapLayerTowers.clearLayers();
   const { lat, lon } = mapLastPos;
-  const dLat = mapRadiusKm / 111.32;
-  const dLon = mapRadiusKm / (111.32 * Math.cos(lat * Math.PI / 180));
+  const dLat = MAP_RADIUS_KM / 111.32;
+  const dLon = MAP_RADIUS_KM / (111.32 * Math.cos(lat * Math.PI / 180));
   const bbox = `${(lat - dLat).toFixed(6)},${(lon - dLon).toFixed(6)},${(lat + dLat).toFixed(6)},${(lon + dLon).toFixed(6)}`;
   const mcc = cell.mn?.substring(0, 3) || '';
   const mnc = cell.mn?.substring(3)    || '';
-  const towerLimit = mapRadiusKm <= 1 ? 300 : mapRadiusKm <= 2 ? 500 : mapRadiusKm <= 5 ? 1000 : 2000;
-  const params = { BBOX: bbox, limit: towerLimit, radio: 'LTE' };
+  const params = { BBOX: bbox, limit: 300, radio: 'LTE' };
   if (mapFilterOp && mcc) params.mcc = mcc;
   if (mapFilterOp && mnc) params.mnc = mnc;
   const servEnb = cell.ci ? (parseInt(cell.ci) >> 8) : -1;
@@ -2621,8 +2614,13 @@ async function mapLoadTowers() {
 
 // ── CellMapper link ───────────────────────────────────────────────────────────
 function openCellMapper() {
-  const mn  = cell.mn || '';
-  if (!/^\d{5,6}$/.test(mn)) { mapSetStatus('No operator info — wait for next poll cycle'); return; }
+  // cell.mn is set by pCOPS/pQENG; fall back to ci-mn DOM element if not yet populated
+  let mn = cell.mn || '';
+  if (!/^\d{5,6}$/.test(mn)) {
+    const raw = (document.getElementById('ci-mn')?.textContent || '').replace(/[-\s]/g, '');
+    if (/^\d{5,6}$/.test(raw)) mn = raw;
+  }
+  if (!/^\d{5,6}$/.test(mn)) { mapSetStatus('No operator info — run Poll first'); return; }
   const mcc = mn.substring(0, 3);
   const mnc = parseInt(mn.substring(3), 10);  // integer — CellMapper rejects "03"
   const pos = mapLastPos;
